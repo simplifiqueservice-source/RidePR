@@ -1,0 +1,19 @@
+using Microsoft.AspNetCore.SignalR;
+
+namespace RidePR.Api.Hubs;
+
+public class DriverHub : Hub
+{
+    public async Task UpdateLocation(
+        Guid driverId,
+        double lat,
+        double lng)
+    {
+        await Clients.All.SendAsync(
+            "driverLocationUpdated",
+            driverId,
+            lat,
+            lng
+        );
+    }
+}

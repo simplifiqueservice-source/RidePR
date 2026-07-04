@@ -1,0 +1,96 @@
+services:
+
+  postgres:
+    image: postgis/postgis:17-3.5
+    container_name: ridepr-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ridepr
+      POSTGRES_USER: ridepr
+      POSTGRES_PASSWORD: ridepr123
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - ridepr-network
+
+  redis:
+    image: redis:7
+    container_name: ridepr-redis
+    restart: unless-stopped
+
+    ports:
+      - "6379:6379"
+
+    networks:
+      - ridepr-network
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: ridepr-rabbitmq
+    restart: unless-stopped
+
+    environment:
+      RABBITMQ_DEFAULT_USER: ridepr
+      RABBITMQ_DEFAULT_PASS: ridepr123
+
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+    networks:
+      - ridepr-network
+
+  minio:
+    image: minio/minio
+    container_name: ridepr-minio
+    restart: unless-stopped
+
+    command: server /data --console-address ":9001"
+
+    environment:
+      MINIO_ROOT_USER: ridepr
+      MINIO_ROOT_PASSWORD: RidePR@2026
+
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    volumes:
+      - minio_data:/data
+
+    networks:
+      - ridepr-network
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: ridepr-portainer
+    restart: unless-stopped
+
+    ports:
+      - "9443:9443"
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
+    networks:
+      - ridepr-network
+
+volumes:
+
+  postgres_data:
+
+  minio_data:
+
+  portainer_data:
+
+networks:
+
+  ridepr-network:
+    driver: bridge

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>RidePR Map</title>
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet/dist/leaflet.css"
+  />
+
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.0/dist/browser/signalr.min.js"></script>
+
+<script>
+  const map = L.map('map').setView([-29.4669, -51.9635], 13);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: 'OpenStreetMap'
+  }).addTo(map);
+
+  let driverMarker = null;
+
+  // SIMULA MOTORISTA ANDANDO
+  const route = [
+    [-29.4669, -51.9635],
+    [-29.4600, -51.9600],
+    [-29.4550, -51.9580],
+    [-29.4500, -51.9550]
+  ];
+
+  let i = 0;
+
+  function moveDriver() {
+    if (i >= route.length) return;
+
+    const pos = route[i];
+
+    if (!driverMarker) {
+      driverMarker = L.marker(pos).addTo(map);
+    } else {
+      driverMarker.setLatLng(pos);
+    }
+
+    map.setView(pos);
+
+    i++;
+  }
+
+  setInterval(moveDriver, 2000);
+</script>
+
+</body>
+</html>

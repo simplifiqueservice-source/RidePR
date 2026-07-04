@@ -1,0 +1,12 @@
+D:\PRMobility\RidePR\backend\RidePR.Domain\bin\Debug\net9.0\RidePR.Domain.deps.json
+D:\PRMobility\RidePR\backend\RidePR.Domain\bin\Debug\net9.0\RidePR.Domain.dll
+D:\PRMobility\RidePR\backend\RidePR.Domain\bin\Debug\net9.0\RidePR.Domain.pdb
+D:\PRMobility\RidePR\backend\RidePR.Domain\obj\Debug\net9.0\RidePR.Domain.GeneratedMSBuildEditorConfig.editorconfig
+D:\PRMobility\RidePR\backend\RidePR.Domain\obj\Debug\net9.0\RidePR.Domain.AssemblyInfoInputs.cache
+D:\PRMobility\RidePR\backend\RidePR.Domain\obj\Debug\net9.0\RidePR.Domain.AssemblyInfo.cs
+D:\PRMobility\RidePR\backend\RidePR.Domain\obj\Debug\net9.0\RidePR.Domain.csproj.CoreCompileInputs.cache
+D:\PRMobility\RidePR\backend\RidePR.Domain\obj\Debug\net9.0\RidePR.Domain.dll
+D:\PRMobility\RidePR\backend\RidePR.Domain\obj\Debug\net9.0\refint\RidePR.Domain.dll
+D:\PRMobility\RidePR\backend\RidePR.Domain\obj\Debug\net9.0\RidePR.Domain.pdb
+D:\PRMobility\RidePR\backend\RidePR.Domain\obj\Debug\net9.0\ref\RidePR.Domain.dll
+D:\PRMobility\RidePR\backend\RidePR.Domain\obj\Debug\net9.0\RidePR.Domain.csproj.AssemblyReference.cache

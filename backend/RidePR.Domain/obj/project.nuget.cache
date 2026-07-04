@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "Y7BZyAK7Jh0=",
+  "success": true,
+  "projectFilePath": "D:\\PRMobility\\RidePR\\backend\\RidePR.Domain\\RidePR.Domain.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\TooP\\.nuget\\packages\\nettopologysuite\\2.5.0\\nettopologysuite.2.5.0.nupkg.sha512",
+    "C:\\Users\\TooP\\.nuget\\packages\\system.memory\\4.5.4\\system.memory.4.5.4.nupkg.sha512"
+  ],
+  "logs": []
+}
