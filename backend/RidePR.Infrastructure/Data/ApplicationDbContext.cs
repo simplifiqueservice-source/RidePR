@@ -19,6 +19,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<Trip> Trips => Set<Trip>();
     public DbSet<DriverLocation> DriverLocations => Set<DriverLocation>();
     public DbSet<FareSettings> FareSettings => Set<FareSettings>();
+    public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<PaymentSplit> PaymentSplits => Set<PaymentSplit>();
+    public DbSet<PaymentRefund> PaymentRefunds => Set<PaymentRefund>();
+    public DbSet<Wallet> Wallets => Set<Wallet>();
+    public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -204,6 +209,166 @@ public class ApplicationDbContext : DbContext
 
             entity.HasIndex(x => x.DriverId)
                 .IsUnique();
+        });
+
+        modelBuilder.Entity<Payment>(entity =>
+        {
+            entity.ToTable("Payments");
+
+            entity.HasKey(x => x.Id);
+
+            entity.HasIndex(x => x.TripId)
+                .IsUnique();
+
+            entity.HasIndex(x => x.PassengerId);
+            entity.HasIndex(x => x.DriverId);
+            entity.HasIndex(x => x.Status);
+
+            entity.Property(x => x.Amount)
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.RefundedAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.Currency)
+                .HasMaxLength(3)
+                .IsRequired();
+
+            entity.Property(x => x.Provider)
+                .HasMaxLength(50);
+
+            entity.Property(x => x.ProviderPaymentId)
+                .HasMaxLength(150);
+
+            entity.Property(x => x.PixQrCode)
+                .HasMaxLength(1000);
+
+            entity.Property(x => x.PixCopyPaste)
+                .HasMaxLength(1000);
+
+            entity.Property(x => x.CardLast4)
+                .HasMaxLength(4);
+
+            entity.Property(x => x.CardBrand)
+                .HasMaxLength(50);
+
+            entity.Property(x => x.FailureReason)
+                .HasMaxLength(500);
+
+            entity.Property(x => x.Method)
+                .HasConversion<int>();
+
+            entity.Property(x => x.Status)
+                .HasConversion<int>();
+
+            entity.HasOne(x => x.Trip)
+                .WithMany()
+                .HasForeignKey(x => x.TripId);
+
+            entity.HasOne(x => x.Passenger)
+                .WithMany()
+                .HasForeignKey(x => x.PassengerId);
+
+            entity.HasOne(x => x.Driver)
+                .WithMany()
+                .HasForeignKey(x => x.DriverId);
+        });
+
+        modelBuilder.Entity<PaymentSplit>(entity =>
+        {
+            entity.ToTable("PaymentSplits");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.RecipientType)
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Property(x => x.Amount)
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.Percentage)
+                .HasPrecision(5, 2);
+
+            entity.HasOne(x => x.Payment)
+                .WithMany(x => x.Splits)
+                .HasForeignKey(x => x.PaymentId);
+
+            entity.HasOne(x => x.Driver)
+                .WithMany()
+                .HasForeignKey(x => x.DriverId);
+        });
+
+        modelBuilder.Entity<PaymentRefund>(entity =>
+        {
+            entity.ToTable("PaymentRefunds");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Amount)
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.Reason)
+                .HasMaxLength(500)
+                .IsRequired();
+
+            entity.Property(x => x.ProviderRefundId)
+                .HasMaxLength(150);
+
+            entity.Property(x => x.Status)
+                .HasConversion<int>();
+
+            entity.HasOne(x => x.Payment)
+                .WithMany(x => x.Refunds)
+                .HasForeignKey(x => x.PaymentId);
+        });
+
+        modelBuilder.Entity<Wallet>(entity =>
+        {
+            entity.ToTable("Wallets");
+
+            entity.HasKey(x => x.Id);
+
+            entity.HasIndex(x => x.UserId)
+                .IsUnique();
+
+            entity.Property(x => x.Balance)
+                .HasPrecision(18, 2);
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId);
+        });
+
+        modelBuilder.Entity<WalletTransaction>(entity =>
+        {
+            entity.ToTable("WalletTransactions");
+
+            entity.HasKey(x => x.Id);
+
+            entity.HasIndex(x => x.WalletId);
+            entity.HasIndex(x => x.PaymentId);
+
+            entity.Property(x => x.Amount)
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.BalanceAfter)
+                .HasPrecision(18, 2);
+
+            entity.Property(x => x.Description)
+                .HasMaxLength(300)
+                .IsRequired();
+
+            entity.Property(x => x.Type)
+                .HasConversion<int>();
+
+            entity.HasOne(x => x.Wallet)
+                .WithMany(x => x.Transactions)
+                .HasForeignKey(x => x.WalletId);
+
+            entity.HasOne(x => x.Payment)
+                .WithMany()
+                .HasForeignKey(x => x.PaymentId);
         });
     }
 }
