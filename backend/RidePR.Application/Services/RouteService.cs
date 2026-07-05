@@ -55,10 +55,23 @@ public class RouteService
         if (cached != null)
             return Result<RouteResultDto>.Ok(cached);
 
-        var route = await provider.GetRouteAsync(request);
+        RouteResultDto? route;
+
+        try
+        {
+            route = await provider.GetRouteAsync(request);
+        }
+        catch (HttpRequestException)
+        {
+            route = CreateEstimatedRoute(request, provider.Name);
+        }
+        catch (TaskCanceledException)
+        {
+            route = CreateEstimatedRoute(request, provider.Name);
+        }
 
         if (route == null)
-            return Result<RouteResultDto>.Fail("Rota nao encontrada.");
+            route = CreateEstimatedRoute(request, provider.Name);
 
         await _cache.SetAsync(cacheKey, route, GetCacheTtl());
 
@@ -219,5 +232,40 @@ public class RouteService
     {
         return coordinate.Latitude is >= -90 and <= 90 &&
                coordinate.Longitude is >= -180 and <= 180;
+    }
+
+    private static RouteResultDto CreateEstimatedRoute(MapRouteRequestDto request, string provider)
+    {
+        const double averageUrbanSpeedKmH = 30;
+        const double earthRadiusKm = 6371;
+
+        var originLat = ToRadians(request.Origin.Latitude);
+        var destinationLat = ToRadians(request.Destination.Latitude);
+        var deltaLat = ToRadians(request.Destination.Latitude - request.Origin.Latitude);
+        var deltaLng = ToRadians(request.Destination.Longitude - request.Origin.Longitude);
+
+        var haversine = Math.Pow(Math.Sin(deltaLat / 2), 2) +
+                        Math.Cos(originLat) *
+                        Math.Cos(destinationLat) *
+                        Math.Pow(Math.Sin(deltaLng / 2), 2);
+
+        var angularDistance = 2 * Math.Atan2(Math.Sqrt(haversine), Math.Sqrt(1 - haversine));
+        var distanceKm = Math.Round(earthRadiusKm * angularDistance * 1.25, 2);
+        var durationMinutes = Math.Max(1, Math.Round(distanceKm / averageUrbanSpeedKmH * 60, 0));
+
+        return new RouteResultDto
+        {
+            DistanceKm = (decimal)distanceKm,
+            DurationMinutes = (decimal)durationMinutes,
+            EtaMinutes = (decimal)durationMinutes,
+            Geometry = string.Empty,
+            GeometryFormat = request.GeometryFormat ?? string.Empty,
+            Provider = $"{provider}-estimated"
+        };
+    }
+
+    private static double ToRadians(double degrees)
+    {
+        return degrees * Math.PI / 180;
     }
 }

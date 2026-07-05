@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RidePR.Api.Hubs;
@@ -111,6 +112,7 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IMapsCache, DistributedMapsCache>();
 builder.Services.AddScoped<IDispatchQueue, RedisDispatchQueue>();
 builder.Services.AddScoped<IDispatchNotifier, SignalRDispatchNotifier>();
+builder.Services.AddScoped<IRealtimeNotifier, SignalRRealtimeNotifier>();
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AdminPanelService>();
@@ -193,6 +195,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+var adminPanelPath = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "..", "frontend-admin"));
 
 app.UseMiddleware<ExceptionMiddleware>();
 
@@ -204,6 +207,14 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+if (Directory.Exists(adminPanelPath))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(adminPanelPath),
+        RequestPath = "/painel"
+    });
+}
 app.UseCors("TestClients");
 
 app.UseAuthentication();
@@ -212,5 +223,8 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<DriverHub>("/driverHub");
 app.MapHealthChecks("/health");
+app.MapGet("/", () => Results.Redirect("/swagger"));
+app.MapGet("/painel", () => Results.Redirect("/painel/index.html"));
+app.MapGet("/app", () => Results.Redirect("/painel/index.html"));
 
 app.Run();

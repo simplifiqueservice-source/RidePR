@@ -1,18 +1,23 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using RidePR.Api.Services;
+using RidePR.Application.Interfaces;
 using RidePR.Application.Services;
 
 namespace RidePR.Api.Hubs;
 
-[Authorize(Roles = "Administrator,Driver")]
+[Authorize(Roles = "Administrator,Driver,Passenger")]
 public class DriverHub : Hub
 {
     private readonly DriverLocationService _locationService;
+    private readonly IRealtimeNotifier _realtimeNotifier;
 
-    public DriverHub(DriverLocationService locationService)
+    public DriverHub(
+        DriverLocationService locationService,
+        IRealtimeNotifier realtimeNotifier)
     {
         _locationService = locationService;
+        _realtimeNotifier = realtimeNotifier;
     }
 
     public async Task JoinDriverGroup(Guid driverId)
@@ -39,8 +44,7 @@ public class DriverHub : Hub
             speed,
             heading);
 
-        await Clients.All.SendAsync(
-            "DriverLocationUpdated",
+        await _realtimeNotifier.NotifyDriverLocationUpdatedAsync(
             driverId,
             latitude,
             longitude,

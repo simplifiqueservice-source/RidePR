@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RidePR.Application.Interfaces;
 using RidePR.Application.Services;
 
 namespace RidePR.Api.Controllers;
@@ -10,10 +11,14 @@ namespace RidePR.Api.Controllers;
 public class DriverLocationController : ControllerBase
 {
     private readonly DriverLocationService _service;
+    private readonly IRealtimeNotifier _realtimeNotifier;
 
-    public DriverLocationController(DriverLocationService service)
+    public DriverLocationController(
+        DriverLocationService service,
+        IRealtimeNotifier realtimeNotifier)
     {
         _service = service;
+        _realtimeNotifier = realtimeNotifier;
     }
 
     // ==========================
@@ -28,6 +33,13 @@ public class DriverLocationController : ControllerBase
         double heading)
     {
         await _service.UpdateLocationAsync(
+            driverId,
+            latitude,
+            longitude,
+            speed,
+            heading);
+
+        await _realtimeNotifier.NotifyDriverLocationUpdatedAsync(
             driverId,
             latitude,
             longitude,

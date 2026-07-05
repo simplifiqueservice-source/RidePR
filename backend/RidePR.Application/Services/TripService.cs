@@ -11,17 +11,20 @@ public class TripService
     private readonly RouteService _routeService;
     private readonly FareCalculatorService _fareCalculator;
     private readonly IDriverRepository _driverRepository;
+    private readonly IRealtimeNotifier _realtimeNotifier;
 
     public TripService(
         ITripRepository repo,
         RouteService routeService,
         FareCalculatorService fareCalculator,
-        IDriverRepository driverRepository)
+        IDriverRepository driverRepository,
+        IRealtimeNotifier realtimeNotifier)
     {
         _repo = repo;
         _routeService = routeService;
         _fareCalculator = fareCalculator;
         _driverRepository = driverRepository;
+        _realtimeNotifier = realtimeNotifier;
     }
 
     // =========================
@@ -57,6 +60,7 @@ public class TripService
 
         await _repo.AddAsync(trip);
         await _repo.SaveChangesAsync();
+        await _realtimeNotifier.NotifyTripRequestedAsync(trip);
 
         return trip;
     }
@@ -88,6 +92,7 @@ public class TripService
         trip.Status = TripStatus.Accepted;
 
         await _repo.SaveChangesAsync();
+        await _realtimeNotifier.NotifyTripAcceptedAsync(trip);
 
         return trip;
     }
@@ -111,6 +116,7 @@ public class TripService
         trip.Status = TripStatus.InProgress;
 
         await _repo.SaveChangesAsync();
+        await _realtimeNotifier.NotifyTripStartedAsync(trip);
 
         return trip;
     }
@@ -157,6 +163,7 @@ public class TripService
 
         await _repo.SaveChangesAsync();
         await _driverRepository.SaveChangesAsync();
+        await _realtimeNotifier.NotifyTripFinishedAsync(trip);
 
         return trip;
     }

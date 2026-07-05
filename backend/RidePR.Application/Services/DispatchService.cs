@@ -13,6 +13,7 @@ public class DispatchService
     private readonly ITripRepository _tripRepository;
     private readonly IDispatchQueue _queue;
     private readonly IDispatchNotifier _notifier;
+    private readonly IRealtimeNotifier _realtimeNotifier;
     private readonly RouteService _routeService;
 
     public DispatchService(
@@ -21,6 +22,7 @@ public class DispatchService
         ITripRepository tripRepository,
         IDispatchQueue queue,
         IDispatchNotifier notifier,
+        IRealtimeNotifier realtimeNotifier,
         RouteService routeService)
     {
         _locationService = locationService;
@@ -28,6 +30,7 @@ public class DispatchService
         _tripRepository = tripRepository;
         _queue = queue;
         _notifier = notifier;
+        _realtimeNotifier = realtimeNotifier;
         _routeService = routeService;
     }
 
@@ -154,6 +157,7 @@ public class DispatchService
         state.AcceptedDriverId = dto.DriverId;
         await _queue.SetAsync(state);
         await _notifier.NotifyDispatchUpdatedAsync(state);
+        await _realtimeNotifier.NotifyTripAcceptedAsync(trip);
         await _queue.RemoveAsync(tripId);
 
         return Result<Trip>.Ok(trip);

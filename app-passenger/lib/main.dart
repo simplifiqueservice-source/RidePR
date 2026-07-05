@@ -1,7 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
+import 'package:signalr_netcore/signalr_client.dart';
 
 void main() {
   runApp(const RidePrMvpTestApp());
@@ -116,12 +119,14 @@ class MvpTestHome extends StatefulWidget {
 
 class _MvpTestHomeState extends State<MvpTestHome> {
   final baseUrlController =
-      TextEditingController(text: 'http://192.168.0.10:5090');
+      TextEditingController(text: 'http://192.168.1.15:5090');
   final emailController =
       TextEditingController(text: 'passageiro.mvp@ridepr.test');
   final passwordController = TextEditingController(text: 'Senha123!');
-  final passengerIdController = TextEditingController();
-  final driverIdController = TextEditingController();
+  final passengerIdController =
+      TextEditingController(text: '9e0d144e-6446-4f6a-a016-ac7cecd2d7b8');
+  final driverIdController =
+      TextEditingController(text: 'd4ff8255-d3fe-4fb6-9fb9-2daaae8398c1');
   final tripIdController = TextEditingController();
   final originController =
       TextEditingController(text: 'Praca da Se, Sao Paulo');
@@ -136,15 +141,23 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   final actualDurationController = TextEditingController(text: '18');
 
   late final ApiClient api = ApiClient(baseUrl: baseUrlController.text);
+  final mapController = MapController();
+  HubConnection? hubConnection;
   int tabIndex = 0;
   bool loading = false;
   String? accessToken;
+  String liveStatus = 'SignalR desconectado.';
+  String tripStatus = 'Sem corrida.';
   String lastResponse = 'Nenhuma chamada executada ainda.';
+  LatLng? originPoint;
+  LatLng? destinationPoint;
+  LatLng? driverPoint;
 
   bool get loggedIn => accessToken != null && accessToken!.isNotEmpty;
 
   @override
   void dispose() {
+    hubConnection?.stop();
     baseUrlController.dispose();
     emailController.dispose();
     passwordController.dispose();
@@ -186,6 +199,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
               passwordController: passwordController,
               loggedIn: loggedIn,
               loading: loading,
+              liveStatus: liveStatus,
               onLogin: _login,
             ),
             _CreateTripScreen(
@@ -202,6 +216,12 @@ class _MvpTestHomeState extends State<MvpTestHome> {
             ),
             _StatusScreen(
               tripIdController: tripIdController,
+              tripStatus: tripStatus,
+              liveStatus: liveStatus,
+              originPoint: originPoint,
+              destinationPoint: destinationPoint,
+              driverPoint: driverPoint,
+              mapController: mapController,
               loading: loading,
               onRefresh: _getTrip,
             ),
@@ -226,7 +246,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.login), label: 'Login'),
           NavigationDestination(icon: Icon(Icons.add_road), label: 'Solicitar'),
-          NavigationDestination(icon: Icon(Icons.route), label: 'Status'),
+          NavigationDestination(icon: Icon(Icons.map), label: 'Status'),
           NavigationDestination(icon: Icon(Icons.tune), label: 'Testes'),
         ],
       ),
@@ -249,6 +269,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       if (result.success && token != null) {
         accessToken = token;
         api.accessToken = token;
+        await _connectRealtime();
       }
 
       return result;
@@ -267,12 +288,14 @@ class _MvpTestHomeState extends State<MvpTestHome> {
         'destinationLongitude': _doubleValue(destinationLngController),
       });
 
-      final tripId = result.body is Map<String, dynamic>
-          ? result.body['id'] as String?
+      final trip = result.body is Map<String, dynamic>
+          ? result.body as Map<String, dynamic>
           : null;
+      final tripId = trip?['id'] as String?;
 
-      if (result.success && tripId != null) {
+      if (result.success && trip != null && tripId != null) {
         tripIdController.text = tripId;
+        _applyTrip(trip, eventName: 'TripRequested');
       }
 
       return result;
@@ -318,7 +341,81 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   }
 
   Future<void> _getTrip() async {
-    await _run(() => api.get('/api/trips/${tripIdController.text.trim()}'));
+    await _run(() async {
+      final result = await api.get('/api/trips/${tripIdController.text.trim()}');
+
+      if (result.success && result.body is Map<String, dynamic>) {
+        _applyTrip(result.body as Map<String, dynamic>, eventName: 'Status');
+      }
+
+      return result;
+    });
+  }
+
+  Future<void> _connectRealtime() async {
+    await hubConnection?.stop();
+
+    final hubUrl =
+        '${baseUrlController.text.trim().replaceAll(RegExp(r'/+$'), '')}/driverHub';
+    final options = HttpConnectionOptions(
+      accessTokenFactory: () async => accessToken ?? '',
+    );
+    final connection = HubConnectionBuilder()
+        .withUrl(hubUrl, options: options)
+        .withAutomaticReconnect()
+        .build();
+
+    connection.onclose(({error}) {
+      if (mounted) {
+        setState(() => liveStatus = 'SignalR desconectado.');
+      }
+    });
+
+    void onTrip(String eventName, List<Object?>? args) {
+      final trip = args?.isNotEmpty == true && args!.first is Map
+          ? Map<String, dynamic>.from(args.first! as Map)
+          : null;
+
+      if (trip != null && mounted) {
+        _applyTrip(trip, eventName: eventName);
+        setState(() {
+          lastResponse = _prettyRealtime(eventName, trip);
+        });
+      }
+    }
+
+    connection.on('TripRequested', (args) => onTrip('TripRequested', args));
+    connection.on('TripAccepted', (args) => onTrip('TripAccepted', args));
+    connection.on('TripStarted', (args) => onTrip('TripStarted', args));
+    connection.on('TripFinished', (args) => onTrip('TripFinished', args));
+    connection.on('DriverLocationUpdated', (args) {
+      final location = args?.isNotEmpty == true && args!.first is Map
+          ? Map<String, dynamic>.from(args.first! as Map)
+          : null;
+
+      if (location == null || !mounted) {
+        return;
+      }
+
+      setState(() {
+        driverPoint = LatLng(
+          _numField(location, 'latitude'),
+          _numField(location, 'longitude'),
+        );
+        liveStatus = 'DriverLocationUpdated';
+        lastResponse = _prettyRealtime('DriverLocationUpdated', location);
+      });
+      _moveMapToVisiblePoint();
+    });
+
+    await connection.start();
+
+    if (mounted) {
+      setState(() {
+        hubConnection = connection;
+        liveStatus = 'SignalR conectado.';
+      });
+    }
   }
 
   Future<void> _run(Future<ApiResult> Function() action) async {
@@ -337,16 +434,63 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     }
   }
 
+  void _applyTrip(Map<String, dynamic> trip, {required String eventName}) {
+    setState(() {
+      tripIdController.text = '${_field(trip, 'id') ?? tripIdController.text}';
+      tripStatus = '$eventName: ${_field(trip, 'status') ?? 'sem status'}';
+      originPoint = LatLng(
+        _numField(trip, 'originLatitude'),
+        _numField(trip, 'originLongitude'),
+      );
+      destinationPoint = LatLng(
+        _numField(trip, 'destinationLatitude'),
+        _numField(trip, 'destinationLongitude'),
+      );
+    });
+    _moveMapToVisiblePoint();
+  }
+
+  void _moveMapToVisiblePoint() {
+    final point = driverPoint ?? originPoint ?? destinationPoint;
+
+    if (point != null) {
+      mapController.move(point, 14);
+    }
+  }
+
   void _clearSession() {
+    hubConnection?.stop();
     setState(() {
       accessToken = null;
       api.accessToken = null;
+      hubConnection = null;
+      liveStatus = 'SignalR desconectado.';
       lastResponse = 'Token removido da memoria.';
     });
   }
 
+  static Object? _field(Map<String, dynamic> source, String name) {
+    final pascal = name.substring(0, 1).toUpperCase() + name.substring(1);
+    return source[name] ?? source[pascal];
+  }
+
+  static double _numField(Map<String, dynamic> source, String name) {
+    final value = _field(source, name);
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse('$value') ?? 0;
+  }
+
   static double _doubleValue(TextEditingController controller) {
     return double.tryParse(controller.text.trim().replaceAll(',', '.')) ?? 0;
+  }
+
+  static String _prettyRealtime(String eventName, Map<String, dynamic> data) {
+    const encoder = JsonEncoder.withIndent('  ');
+    return 'SIGNALR $eventName\n${encoder.convert(data)}';
   }
 }
 
@@ -357,6 +501,7 @@ class _LoginScreen extends StatelessWidget {
     required this.passwordController,
     required this.loggedIn,
     required this.loading,
+    required this.liveStatus,
     required this.onLogin,
   });
 
@@ -365,6 +510,7 @@ class _LoginScreen extends StatelessWidget {
   final TextEditingController passwordController;
   final bool loggedIn;
   final bool loading;
+  final String liveStatus;
   final VoidCallback onLogin;
 
   @override
@@ -384,11 +530,8 @@ class _LoginScreen extends StatelessWidget {
           icon: const Icon(Icons.login),
           label: Text(loggedIn ? 'Login OK - entrar novamente' : 'Entrar'),
         ),
-        Text(
-          loggedIn
-              ? 'Token salvo em memoria.'
-              : 'Informe o IP/porta do servidor e faca login.',
-        ),
+        Text(loggedIn ? 'Token salvo em memoria.' : 'Informe o IP/porta.'),
+        Text(liveStatus),
       ],
     );
   }
@@ -431,25 +574,29 @@ class _CreateTripScreen extends StatelessWidget {
         Row(
           children: [
             Expanded(
-                child: _Input(
-                    controller: originLatController, label: 'Lat origem')),
+              child: _Input(controller: originLatController, label: 'Lat origem'),
+            ),
             const SizedBox(width: 8),
             Expanded(
-                child: _Input(
-                    controller: originLngController, label: 'Lng origem')),
+              child: _Input(controller: originLngController, label: 'Lng origem'),
+            ),
           ],
         ),
         Row(
           children: [
             Expanded(
-                child: _Input(
-                    controller: destinationLatController,
-                    label: 'Lat destino')),
+              child: _Input(
+                controller: destinationLatController,
+                label: 'Lat destino',
+              ),
+            ),
             const SizedBox(width: 8),
             Expanded(
-                child: _Input(
-                    controller: destinationLngController,
-                    label: 'Lng destino')),
+              child: _Input(
+                controller: destinationLngController,
+                label: 'Lng destino',
+              ),
+            ),
           ],
         ),
         FilledButton.icon(
@@ -465,11 +612,23 @@ class _CreateTripScreen extends StatelessWidget {
 class _StatusScreen extends StatelessWidget {
   const _StatusScreen({
     required this.tripIdController,
+    required this.tripStatus,
+    required this.liveStatus,
+    required this.originPoint,
+    required this.destinationPoint,
+    required this.driverPoint,
+    required this.mapController,
     required this.loading,
     required this.onRefresh,
   });
 
   final TextEditingController tripIdController;
+  final String tripStatus;
+  final String liveStatus;
+  final LatLng? originPoint;
+  final LatLng? destinationPoint;
+  final LatLng? driverPoint;
+  final MapController mapController;
   final bool loading;
   final VoidCallback onRefresh;
 
@@ -484,7 +643,54 @@ class _StatusScreen extends StatelessWidget {
           icon: const Icon(Icons.refresh),
           label: const Text('Consultar corrida'),
         ),
+        Text(tripStatus),
+        Text(liveStatus),
+        SizedBox(
+          height: 280,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: FlutterMap(
+              mapController: mapController,
+              options: const MapOptions(
+                initialCenter: LatLng(-23.555, -46.645),
+                initialZoom: 13,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.ridepr.passenger',
+                ),
+                MarkerLayer(
+                  markers: [
+                    if (originPoint != null)
+                      _mapMarker(originPoint!, Icons.trip_origin, Colors.green),
+                    if (destinationPoint != null)
+                      _mapMarker(destinationPoint!, Icons.flag, Colors.red),
+                    if (driverPoint != null)
+                      _mapMarker(driverPoint!, Icons.local_taxi, Colors.blue),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
+    );
+  }
+
+  static Marker _mapMarker(LatLng point, IconData icon, Color color) {
+    return Marker(
+      point: point,
+      width: 44,
+      height: 44,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: color, width: 2),
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Icon(icon, color: color),
+      ),
     );
   }
 }
@@ -523,10 +729,13 @@ class _TestButtonsScreen extends StatelessWidget {
         _Input(controller: driverIdController, label: 'DriverId manual'),
         _Input(controller: radiusController, label: 'Raio dispatch km'),
         _Input(
-            controller: actualDistanceController, label: 'Distancia final km'),
+          controller: actualDistanceController,
+          label: 'Distancia final km',
+        ),
         _Input(
-            controller: actualDurationController,
-            label: 'Duracao final minutos'),
+          controller: actualDurationController,
+          label: 'Duracao final minutos',
+        ),
         FilledButton.icon(
           onPressed: loading ? null : onRequestDispatch,
           icon: const Icon(Icons.radar),

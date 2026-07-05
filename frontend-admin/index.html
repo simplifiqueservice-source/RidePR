@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>RidePR Admin MVP</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -20,7 +24,7 @@
         <h2>Login admin</h2>
         <label>
           API baseUrl
-          <input id="baseUrl" value="http://192.168.0.10:5090" />
+          <input id="baseUrl" value="http://192.168.1.15:5090" />
         </label>
         <label>
           E-mail
@@ -50,7 +54,7 @@
         <div class="grid">
           <label>
             PassengerId
-            <input id="passengerId" placeholder="GUID do passageiro" />
+            <input id="passengerId" value="9e0d144e-6446-4f6a-a016-ac7cecd2d7b8" placeholder="GUID do passageiro" />
           </label>
           <label>
             TripId
@@ -92,7 +96,7 @@
         <div class="grid">
           <label>
             DriverId manual
-            <input id="driverId" placeholder="GUID do motorista" />
+            <input id="driverId" value="d4ff8255-d3fe-4fb6-9fb9-2daaae8398c1" placeholder="GUID do motorista" />
           </label>
           <label>
             Raio dispatch km
@@ -115,12 +119,20 @@
         </div>
       </section>
 
+      <section class="panel wide">
+        <h2>Mapa em tempo real</h2>
+        <p id="liveStatus" class="muted">SignalR desconectado.</p>
+        <div id="map"></div>
+      </section>
+
       <section class="panel response wide">
         <h2>Resposta JSON</h2>
         <pre id="responseBox">Nenhuma chamada executada ainda.</pre>
       </section>
     </main>
 
-    <script src="./app.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <script src="./app.js?v=202607051305"></script>
   </body>
 </html>

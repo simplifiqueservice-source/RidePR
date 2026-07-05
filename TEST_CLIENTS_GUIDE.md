@@ -16,7 +16,7 @@ dotnet run --project backend\RidePR.Api --urls "http://0.0.0.0:5090"
 No telefone e no painel web, use:
 
 ```text
-http://192.168.0.10:5090
+http://192.168.1.15:5090
 ```
 
 O telefone precisa estar na mesma rede Wi-Fi do computador. Se nao conectar, confira o firewall do Windows liberando a porta `5090`.
@@ -33,7 +33,7 @@ flutter run
 No app:
 
 1. Abra a aba `Login`.
-2. Informe a `Base URL da API`, por exemplo `http://192.168.0.10:5090`.
+2. Informe a `Base URL da API`, por exemplo `http://192.168.1.15:5090`.
 3. Informe e-mail e senha do passageiro.
 4. Toque em `Entrar`.
 5. Abra `Solicitar`.
@@ -60,7 +60,7 @@ frontend-admin/index.html
 
 No painel:
 
-1. Informe `API baseUrl`, por exemplo `http://192.168.0.10:5090`.
+1. Informe `API baseUrl`, por exemplo `http://192.168.1.15:5090`.
 2. Informe e-mail e senha de admin.
 3. Clique em `Login`.
 4. Use os botoes:
