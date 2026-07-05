@@ -6,5 +6,9 @@ public class RouteResultDto
 
     public decimal DurationMinutes { get; set; }
 
+    public decimal EtaMinutes { get; set; }
+
     public string Geometry { get; set; } = string.Empty;
+
+    public string Provider { get; set; } = string.Empty;
 }

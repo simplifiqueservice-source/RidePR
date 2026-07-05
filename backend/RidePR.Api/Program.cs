@@ -7,8 +7,10 @@ using RidePR.Api.Hubs;
 using RidePR.Api.Middleware;
 using RidePR.Application.Interfaces;
 using RidePR.Application.Services;
+using RidePR.Application.Settings;
 using RidePR.Infrastructure.Authentication;
 using RidePR.Infrastructure.Data;
+using RidePR.Infrastructure.Maps;
 using RidePR.Infrastructure.Repositories;
 using Serilog;
 
@@ -60,6 +62,23 @@ builder.Services.AddSwaggerGen(options =>
 
 builder.Services.AddSignalR();
 
+builder.Services.Configure<MapsOptions>(builder.Configuration.GetSection("Maps"));
+
+var redisConnection = builder.Configuration.GetConnectionString("Redis");
+
+if (string.IsNullOrWhiteSpace(redisConnection))
+{
+    builder.Services.AddDistributedMemoryCache();
+}
+else
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnection;
+        options.InstanceName = "RidePR:";
+    });
+}
+
 builder.Services.AddScoped<ITripRepository, TripRepository>();
 builder.Services.AddScoped<IDriverLocationRepository, DriverLocationRepository>();
 builder.Services.AddScoped<IFareSettingsRepository, FareSettingsRepository>();
@@ -68,6 +87,7 @@ builder.Services.AddScoped<IDriverRepository, DriverRepository>();
 builder.Services.AddScoped<IVehicleRepository, VehicleRepository>();
 builder.Services.AddScoped<IPassengerRepository, PassengerRepository>();
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IMapsCache, DistributedMapsCache>();
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<UserService>();
@@ -79,7 +99,9 @@ builder.Services.AddScoped<DispatchService>();
 builder.Services.AddScoped<TripService>();
 builder.Services.AddScoped<FareCalculatorService>();
 
-builder.Services.AddHttpClient<RouteService>();
+builder.Services.AddHttpClient<IMapProvider, OpenStreetMapProvider>();
+builder.Services.AddHttpClient<IMapProvider, GoogleMapsProvider>();
+builder.Services.AddScoped<RouteService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(
