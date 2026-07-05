@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 
@@ -350,13 +352,20 @@ class _DriverHomePageState extends State<DriverHomePage> {
   final vehicleRenavam = TextEditingController();
   final vehicleChassis = TextEditingController();
 
+  final mapController = MapController();
   HubConnection? hubConnection;
   Timer? locationTimer;
+  String? connectedHubUrl;
   Map<String, dynamic>? driver;
   Map<String, dynamic>? vehicle;
   Map<String, dynamic>? currentOffer;
   Map<String, dynamic>? activeTrip;
   List<Map<String, dynamic>> availableTrips = [];
+  LatLng? driverPoint;
+  LatLng? originPoint;
+  LatLng? destinationPoint;
+  LatLng? lastCenteredPoint;
+  String? lastLocationSignature;
   bool loading = true;
   bool locationStreaming = false;
   int selectedStatus = 2;
@@ -406,92 +415,152 @@ class _DriverHomePageState extends State<DriverHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('RidePR Motorista'),
-        actions: [
-          IconButton(
-            tooltip: 'Atualizar',
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
+      endDrawer: Drawer(
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                'RidePR Motorista',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 12),
+              _HeaderCard(
+                title: widget.session.name ?? 'Motorista',
+                subtitle: driver == null
+                    ? widget.session.email ?? ''
+                    : 'Status: ${_driverStatusLabel(driver!['status'])}',
+                trailing: driver == null ? 'Sem cadastro' : liveStatus,
+              ),
+              const SizedBox(height: 12),
+              _DriverRegistrationCard(
+                hasDriver: driver != null,
+                cpf: cpf,
+                rg: rg,
+                birthDate: birthDate,
+                phone: phone,
+                emergencyPhone: emergencyPhone,
+                address: address,
+                city: city,
+                state: state,
+                zipCode: zipCode,
+                cnhNumber: cnhNumber,
+                cnhCategory: cnhCategory,
+                cnhExpiration: cnhExpiration,
+                active: _boolValue(driver, 'active', fallback: true),
+                onSave: _saveDriver,
+                onToggleActive: driver == null ? null : _toggleDriverActive,
+              ),
+              const SizedBox(height: 12),
+              _VehicleRegistrationCard(
+                hasDriver: driver != null,
+                hasVehicle: vehicle != null,
+                plate: vehiclePlate,
+                brand: vehicleBrand,
+                model: vehicleModel,
+                color: vehicleColor,
+                year: vehicleYear,
+                renavam: vehicleRenavam,
+                chassis: vehicleChassis,
+                active: _boolValue(vehicle, 'active', fallback: true),
+                onSave: driver == null ? null : _saveVehicle,
+                onToggleActive: vehicle == null ? null : _toggleVehicleActive,
+              ),
+              const SizedBox(height: 12),
+              _AvailableTripsCard(
+                trips: availableTrips,
+                onAccept: (trip) => _acceptTrip(_id(trip)),
+              ),
+              const SizedBox(height: 12),
+              _LocationCard(
+                latitude: latitude,
+                longitude: longitude,
+                speed: speed,
+                heading: heading,
+                streaming: locationStreaming,
+                onSend: _sendLocation,
+                onToggleStream: _toggleLocationStream,
+              ),
+              const SizedBox(height: 12),
+              _DebugCard(text: lastEvent),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _logout,
+                icon: const Icon(Icons.logout),
+                label: const Text('Sair'),
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: 'Sair',
-            onPressed: _logout,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
+        ),
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                children: [
-                  _HeaderCard(
-                    title: widget.session.name ?? 'Motorista',
-                    subtitle: driver == null
-                        ? widget.session.email ?? ''
-                        : 'Status: ${_driverStatusLabel(driver!['status'])}',
-                    trailing: driver == null ? 'Sem cadastro' : liveStatus,
+          : Stack(
+              children: [
+                Positioned.fill(
+                  child: FlutterMap(
+                    mapController: mapController,
+                    options: const MapOptions(
+                      initialCenter: LatLng(-23.555, -46.645),
+                      initialZoom: 13,
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.ridepr.driver',
+                      ),
+                      MarkerLayer(markers: _markers()),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  _DriverRegistrationCard(
-                    hasDriver: driver != null,
-                    cpf: cpf,
-                    rg: rg,
-                    birthDate: birthDate,
-                    phone: phone,
-                    emergencyPhone: emergencyPhone,
-                    address: address,
-                    city: city,
-                    state: state,
-                    zipCode: zipCode,
-                    cnhNumber: cnhNumber,
-                    cnhCategory: cnhCategory,
-                    cnhExpiration: cnhExpiration,
-                    active: _boolValue(driver, 'active', fallback: true),
-                    onSave: _saveDriver,
-                    onToggleActive: driver == null ? null : _toggleDriverActive,
+                ),
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Builder(
+                          builder: (context) => FloatingActionButton.small(
+                            heroTag: 'driver-menu',
+                            onPressed: () =>
+                                Scaffold.of(context).openEndDrawer(),
+                            child: const Icon(Icons.menu),
+                          ),
+                        ),
+                        const Spacer(),
+                        FloatingActionButton.small(
+                          heroTag: 'driver-refresh',
+                          onPressed: _load,
+                          child: const Icon(Icons.refresh),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  _VehicleRegistrationCard(
-                    hasDriver: driver != null,
-                    hasVehicle: vehicle != null,
-                    plate: vehiclePlate,
-                    brand: vehicleBrand,
-                    model: vehicleModel,
-                    color: vehicleColor,
-                    year: vehicleYear,
-                    renavam: vehicleRenavam,
-                    chassis: vehicleChassis,
-                    active: _boolValue(vehicle, 'active', fallback: true),
-                    onSave: driver == null ? null : _saveVehicle,
-                    onToggleActive:
-                        vehicle == null ? null : _toggleVehicleActive,
-                  ),
-                  const SizedBox(height: 16),
-                  _AvailabilityCard(
-                    selectedStatus: selectedStatus,
-                    liveStatus: liveStatus,
+                ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _DriverRidePanel(
+                    driverReady: driver != null && vehicle != null,
+                    online: selectedStatus == 2,
                     streaming: locationStreaming,
-                    onToggle: _toggleAvailability,
-                  ),
-                  const SizedBox(height: 16),
-                  _OfferCard(
+                    liveStatus: liveStatus,
                     offer: currentOffer,
+                    activeTrip: activeTrip,
+                    actualDistance: actualDistance,
+                    actualDuration: actualDuration,
+                    onToggleOnline: _toggleAvailability,
                     onAccept: currentOffer == null
                         ? null
                         : () => _acceptTrip(currentOffer!['tripId'].toString()),
                     onReject: currentOffer == null
                         ? null
                         : () => _rejectTrip(currentOffer!['tripId'].toString()),
-                  ),
-                  const SizedBox(height: 16),
-                  _ActiveTripCard(
-                    trip: activeTrip,
-                    actualDistance: actualDistance,
-                    actualDuration: actualDuration,
+                    onStart: activeTrip == null
+                        ? null
+                        : () => _startTrip(_id(activeTrip!)),
+                    onFinish: activeTrip == null
+                        ? null
+                        : () => _finishTrip(_id(activeTrip!)),
                     canStart: _tripStatusLabel(
                           activeTrip?['status'] ?? activeTrip?['Status'],
                         ) ==
@@ -500,33 +569,37 @@ class _DriverHomePageState extends State<DriverHomePage> {
                           activeTrip?['status'] ?? activeTrip?['Status'],
                         ) ==
                         'InProgress',
-                    onStart: activeTrip == null
-                        ? null
-                        : () => _startTrip(_id(activeTrip!)),
-                    onFinish: activeTrip == null
-                        ? null
-                        : () => _finishTrip(_id(activeTrip!)),
                   ),
-                  const SizedBox(height: 16),
-                  _AvailableTripsCard(
-                    trips: availableTrips,
-                    onAccept: (trip) => _acceptTrip(_id(trip)),
-                  ),
-                  const SizedBox(height: 16),
-                  _LocationCard(
-                    latitude: latitude,
-                    longitude: longitude,
-                    speed: speed,
-                    heading: heading,
-                    streaming: locationStreaming,
-                    onSend: _sendLocation,
-                    onToggleStream: _toggleLocationStream,
-                  ),
-                  const SizedBox(height: 16),
-                  _DebugCard(text: lastEvent),
-                ],
-              ),
+                ),
+              ],
             ),
+    );
+  }
+
+  List<Marker> _markers() {
+    return [
+      if (driverPoint != null)
+        _mapMarker(driverPoint!, Icons.local_taxi, Colors.blue),
+      if (originPoint != null)
+        _mapMarker(originPoint!, Icons.trip_origin, Colors.green),
+      if (destinationPoint != null)
+        _mapMarker(destinationPoint!, Icons.flag, Colors.red),
+    ];
+  }
+
+  static Marker _mapMarker(LatLng point, IconData icon, Color color) {
+    return Marker(
+      point: point,
+      width: 44,
+      height: 44,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: color, width: 2),
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Icon(icon, color: color),
+      ),
     );
   }
 
@@ -622,10 +695,16 @@ class _DriverHomePageState extends State<DriverHomePage> {
       return;
     }
 
-    await hubConnection?.stop();
-
     final hubUrl =
         '${widget.session.api.baseUrl.replaceAll(RegExp(r'/+$'), '')}/driverHub';
+
+    if (connectedHubUrl == hubUrl &&
+        hubConnection?.state == HubConnectionState.Connected) {
+      return;
+    }
+
+    await hubConnection?.stop();
+
     final options = HttpConnectionOptions(
       accessTokenFactory: () async => widget.session.api.accessToken ?? '',
     );
@@ -649,6 +728,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
       setState(() {
         currentOffer = offer;
+        _applyRoutePoints(offer);
         lastEvent = _pretty('DispatchOfferReceived', offer);
       });
     });
@@ -698,6 +778,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
     setState(() {
       hubConnection = connection;
+      connectedHubUrl = hubUrl;
       liveStatus = 'SignalR conectado.';
     });
   }
@@ -709,6 +790,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
     setState(() {
       lastEvent = _pretty(eventName, trip);
+      _applyRoutePoints(trip);
 
       if (status == 'Requested') {
         final exists = availableTrips.any((item) => _id(item) == _id(trip));
@@ -726,6 +808,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
         activeTrip = null;
       }
     });
+    _moveMapToVisiblePoint();
   }
 
   Future<void> _updateStatus() async {
@@ -873,9 +956,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
       );
       setState(() {
         activeTrip = Map<String, dynamic>.from(data as Map);
+        _applyRoutePoints(activeTrip!);
         currentOffer = null;
         lastEvent = _pretty('TripAccepted', activeTrip!);
       });
+      _moveMapToVisiblePoint();
       await _loadTrips();
     } catch (ex) {
       setState(() => lastEvent = ex.toString());
@@ -914,8 +999,10 @@ class _DriverHomePageState extends State<DriverHomePage> {
       );
       setState(() {
         activeTrip = Map<String, dynamic>.from(data as Map);
+        _applyRoutePoints(activeTrip!);
         lastEvent = _pretty('TripStarted', activeTrip!);
       });
+      _moveMapToVisiblePoint();
     } catch (ex) {
       setState(() => lastEvent = ex.toString());
     }
@@ -937,6 +1024,8 @@ class _DriverHomePageState extends State<DriverHomePage> {
       );
       setState(() {
         activeTrip = null;
+        originPoint = null;
+        destinationPoint = null;
         lastEvent = _pretty('TripFinished', data as Map<String, dynamic>);
       });
       await _loadTrips();
@@ -956,6 +1045,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
     final lng = _doubleValue(longitude);
     final currentSpeed = _doubleValue(speed);
     final currentHeading = _doubleValue(heading);
+    final signature = '$lat:$lng:$currentSpeed:$currentHeading';
+
+    if (signature == lastLocationSignature) {
+      return;
+    }
 
     try {
       if (hubConnection?.state == HubConnectionState.Connected) {
@@ -978,9 +1072,12 @@ class _DriverHomePageState extends State<DriverHomePage> {
       }
 
       setState(() {
+        lastLocationSignature = signature;
+        driverPoint = LatLng(lat, lng);
         lastEvent =
             'DriverLocationUpdated\nlat=$lat lng=$lng speed=$currentSpeed heading=$currentHeading';
       });
+      _moveMapToVisiblePoint();
     } catch (ex) {
       setState(() => lastEvent = ex.toString());
     }
@@ -998,7 +1095,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
     locationTimer = Timer.periodic(
       const Duration(seconds: 5),
-      (_) => _sendLocation(),
+      (_) {
+        if (mounted && locationStreaming) {
+          _sendLocation();
+        }
+      },
     );
     _sendLocation();
     setState(() {
@@ -1034,8 +1135,54 @@ class _DriverHomePageState extends State<DriverHomePage> {
     return Map<String, dynamic>.from(args.first! as Map);
   }
 
+  void _applyRoutePoints(Map<String, dynamic> source) {
+    final originLat = _numValue(source, 'originLatitude');
+    final originLng = _numValue(source, 'originLongitude');
+    final destLat = _numValue(source, 'destinationLatitude');
+    final destLng = _numValue(source, 'destinationLongitude');
+
+    if (originLat != 0 && originLng != 0) {
+      originPoint = LatLng(originLat, originLng);
+    }
+
+    if (destLat != 0 && destLng != 0) {
+      destinationPoint = LatLng(destLat, destLng);
+    }
+  }
+
+  void _moveMapToVisiblePoint() {
+    final point = activeTrip == null
+        ? (driverPoint ?? originPoint ?? destinationPoint)
+        : (originPoint ?? destinationPoint ?? driverPoint);
+
+    if (point != null && !_samePoint(point, lastCenteredPoint)) {
+      lastCenteredPoint = point;
+      mapController.move(point, 14);
+    }
+  }
+
+  static bool _samePoint(LatLng? left, LatLng? right) {
+    if (left == null || right == null) {
+      return false;
+    }
+
+    return (left.latitude - right.latitude).abs() < 0.00001 &&
+        (left.longitude - right.longitude).abs() < 0.00001;
+  }
+
   static String _id(Map<String, dynamic> source) {
     return '${source['id'] ?? source['Id'] ?? ''}';
+  }
+
+  static double _numValue(Map<String, dynamic> source, String key) {
+    final value = source[key] ??
+        source[key.substring(0, 1).toUpperCase() + key.substring(1)];
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse('$value') ?? 0;
   }
 
   void _fillDriverForm(Map<String, dynamic> source) {
@@ -1132,16 +1279,6 @@ class _DriverHomePageState extends State<DriverHomePage> {
       'Accepted' => 'Accepted',
       'InProgress' => 'InProgress',
       'Finished' => 'Finished',
-      _ => '$value',
-    };
-  }
-
-  static String _tripStatusText(Object? value) {
-    return switch (_tripStatusLabel(value)) {
-      'Requested' => 'Solicitada',
-      'Accepted' => 'Aceita',
-      'InProgress' => 'Em andamento',
-      'Finished' => 'Finalizada',
       _ => '$value',
     };
   }
@@ -1368,176 +1505,234 @@ class _VehicleRegistrationCard extends StatelessWidget {
   }
 }
 
-class _AvailabilityCard extends StatelessWidget {
-  const _AvailabilityCard({
-    required this.selectedStatus,
-    required this.liveStatus,
+class _DriverRidePanel extends StatelessWidget {
+  const _DriverRidePanel({
+    required this.driverReady,
+    required this.online,
     required this.streaming,
-    required this.onToggle,
+    required this.liveStatus,
+    required this.offer,
+    required this.activeTrip,
+    required this.actualDistance,
+    required this.actualDuration,
+    required this.onToggleOnline,
+    required this.onAccept,
+    required this.onReject,
+    required this.onStart,
+    required this.onFinish,
+    required this.canStart,
+    required this.canFinish,
   });
 
-  final int selectedStatus;
-  final String liveStatus;
+  final bool driverReady;
+  final bool online;
   final bool streaming;
-  final VoidCallback onToggle;
+  final String liveStatus;
+  final Map<String, dynamic>? offer;
+  final Map<String, dynamic>? activeTrip;
+  final TextEditingController actualDistance;
+  final TextEditingController actualDuration;
+  final VoidCallback onToggleOnline;
+  final VoidCallback? onAccept;
+  final VoidCallback? onReject;
+  final VoidCallback? onStart;
+  final VoidCallback? onFinish;
+  final bool canStart;
+  final bool canFinish;
 
   @override
   Widget build(BuildContext context) {
-    return _SectionCard(
-      title: 'Disponibilidade',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            selectedStatus == 2 ? 'Voce esta online.' : 'Voce esta offline.',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: onToggle,
-            icon: Icon(
-                selectedStatus == 2 ? Icons.pause_circle : Icons.play_circle),
-            label: Text(selectedStatus == 2 ? 'Ficar offline' : 'Ficar online'),
-          ),
-          const SizedBox(height: 8),
-          Text(streaming
-              ? 'Localizacao automatica ligada.'
-              : 'Localizacao automatica parada.'),
-          Text(liveStatus),
-        ],
+    final hasOffer = offer != null;
+    final hasTrip = activeTrip != null;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 22,
+              offset: Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  online ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: online ? Colors.green : Colors.black54,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _headline,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(streaming ? 'Localizacao automatica ativa' : liveStatus),
+            const SizedBox(height: 14),
+            if (!driverReady)
+              const Text('Complete cadastro e veiculo no menu para operar.')
+            else if (hasOffer)
+              _OfferSummary(offer: offer!)
+            else if (hasTrip)
+              _TripSummary(
+                trip: activeTrip!,
+                actualDistance: actualDistance,
+                actualDuration: actualDuration,
+              )
+            else
+              Text(
+                online
+                    ? 'Aguardando uma corrida perto de voce.'
+                    : 'Fique online para receber corridas.',
+              ),
+            const SizedBox(height: 14),
+            if (hasOffer)
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: onAccept,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                      child: const Text('Aceitar'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onReject,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                      child: const Text('Recusar'),
+                    ),
+                  ),
+                ],
+              )
+            else if (hasTrip)
+              FilledButton(
+                onPressed: canFinish
+                    ? onFinish
+                    : canStart
+                        ? onStart
+                        : null,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
+                child:
+                    Text(canFinish ? 'Finalizar corrida' : 'Iniciar corrida'),
+              )
+            else
+              FilledButton(
+                onPressed: driverReady ? onToggleOnline : null,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(54),
+                  textStyle: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                child: Text(online ? 'Ficar offline' : 'Ficar online'),
+              ),
+          ],
+        ),
       ),
     );
   }
+
+  String get _headline {
+    if (!driverReady) {
+      return 'Prepare seu perfil';
+    }
+
+    if (offer != null) {
+      return 'Nova corrida';
+    }
+
+    if (activeTrip != null) {
+      return 'Corrida atual';
+    }
+
+    return online ? 'Voce esta online' : 'Voce esta offline';
+  }
 }
 
-class _OfferCard extends StatelessWidget {
-  const _OfferCard({
-    required this.offer,
-    required this.onAccept,
-    required this.onReject,
-  });
+class _OfferSummary extends StatelessWidget {
+  const _OfferSummary({required this.offer});
 
-  final Map<String, dynamic>? offer;
-  final VoidCallback? onAccept;
-  final VoidCallback? onReject;
+  final Map<String, dynamic> offer;
 
   @override
   Widget build(BuildContext context) {
-    return _SectionCard(
-      title: offer == null ? 'Corrida recebida' : 'Nova corrida recebida',
-      child: offer == null
-          ? const Text('Nenhuma oferta recebida.')
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Origem: ${offer!['origin'] ?? offer!['Origin']}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Text(
-                    'Destino: ${offer!['destination'] ?? offer!['Destination']}'),
-                Text('Distancia ate origem: ${offer!['distanceKm']} km'),
-                Text('Tempo estimado: ${offer!['etaMinutes']} min'),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: onAccept,
-                        icon: const Icon(Icons.check),
-                        label: const Text('Aceitar corrida'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: onReject,
-                        icon: const Icon(Icons.close),
-                        label: const Text('Recusar'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${offer['origin'] ?? offer['Origin']}',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 4),
+        Text('${offer['destination'] ?? offer['Destination']}'),
+        const SizedBox(height: 8),
+        Text('Ate a origem: ${offer['distanceKm'] ?? '-'} km'),
+        Text('Tempo estimado: ${offer['etaMinutes'] ?? '-'} min'),
+      ],
     );
   }
 }
 
-class _ActiveTripCard extends StatelessWidget {
-  const _ActiveTripCard({
+class _TripSummary extends StatelessWidget {
+  const _TripSummary({
     required this.trip,
     required this.actualDistance,
     required this.actualDuration,
-    required this.canStart,
-    required this.canFinish,
-    required this.onStart,
-    required this.onFinish,
   });
 
-  final Map<String, dynamic>? trip;
+  final Map<String, dynamic> trip;
   final TextEditingController actualDistance;
   final TextEditingController actualDuration;
-  final bool canStart;
-  final bool canFinish;
-  final VoidCallback? onStart;
-  final VoidCallback? onFinish;
 
   @override
   Widget build(BuildContext context) {
-    return _SectionCard(
-      title: 'Corrida em andamento',
-      child: trip == null
-          ? const Text('Nenhuma corrida aceita ou em andamento.')
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('ID: ${trip!['id'] ?? trip!['Id']}'),
-                Text('Origem: ${trip!['origin'] ?? trip!['Origin']}'),
-                Text(
-                    'Destino: ${trip!['destination'] ?? trip!['Destination']}'),
-                Text(
-                  'Status: ${_DriverHomePageState._tripStatusText(trip!['status'] ?? trip!['Status'])}',
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _Input(
-                        controller: actualDistance,
-                        label: 'Distancia km',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _Input(
-                        controller: actualDuration,
-                        label: 'Duracao min',
-                      ),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: canStart ? onStart : null,
-                        icon: const Icon(Icons.play_arrow),
-                        label: const Text('Iniciar corrida'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: canFinish ? onFinish : null,
-                        icon: const Icon(Icons.flag),
-                        label: const Text('Finalizar corrida'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${trip['origin'] ?? trip['Origin']}',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 4),
+        Text('${trip['destination'] ?? trip['Destination']}'),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _Input(controller: actualDistance, label: 'Km final'),
             ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _Input(controller: actualDuration, label: 'Min final'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

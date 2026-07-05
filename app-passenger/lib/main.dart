@@ -172,7 +172,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   late final ApiClient api = ApiClient(baseUrl: baseUrlController.text);
   final mapController = MapController();
   HubConnection? hubConnection;
-  int tabIndex = 0;
+  String? connectedHubUrl;
   bool loading = false;
   bool debugVisible = false;
   String? accessToken;
@@ -184,6 +184,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   LatLng? originPoint;
   LatLng? destinationPoint;
   LatLng? driverPoint;
+  LatLng? lastCenteredPoint;
 
   bool get loggedIn => accessToken != null && accessToken!.isNotEmpty;
   bool get hasTripId => tripIdController.text.trim().isNotEmpty;
@@ -236,97 +237,197 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('RidePR Passageiro'),
-        actions: [
-          TextButton.icon(
-            onPressed: () => setState(() => debugVisible = !debugVisible),
-            icon: const Icon(Icons.bug_report),
-            label: const Text('Debug'),
+      endDrawer: Drawer(
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text('RidePR', style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 16),
+              ExpansionTile(
+                leading: const Icon(Icons.person),
+                title: const Text('Login e cadastro'),
+                initiallyExpanded: !loggedIn,
+                children: [
+                  _LoginScreen(
+                    baseUrlController: baseUrlController,
+                    emailController: emailController,
+                    passwordController: passwordController,
+                    loggedIn: loggedIn,
+                    loading: loading,
+                    liveStatus: liveStatus,
+                    onLogin: _login,
+                  ),
+                  _CreateTripScreen(
+                    passengerCpfController: passengerCpfController,
+                    passengerBirthDateController: passengerBirthDateController,
+                    passengerPhoneController: passengerPhoneController,
+                    passengerEmergencyPhoneController:
+                        passengerEmergencyPhoneController,
+                    passengerAddressController: passengerAddressController,
+                    passengerCityController: passengerCityController,
+                    passengerStateController: passengerStateController,
+                    passengerZipCodeController: passengerZipCodeController,
+                    passengerIdController: passengerIdController,
+                    tripIdController: tripIdController,
+                    originController: originController,
+                    destinationController: destinationController,
+                    originLatController: originLatController,
+                    originLngController: originLngController,
+                    destinationLatController: destinationLatController,
+                    destinationLngController: destinationLngController,
+                    loading: loading,
+                    canCreateTrip: loggedIn,
+                    passengerLoaded: passenger != null,
+                    onSavePassenger: _savePassenger,
+                    onCreateTrip: _createTrip,
+                  ),
+                ],
+              ),
+              ExpansionTile(
+                leading: const Icon(Icons.tune),
+                title: const Text('Teste avancado'),
+                children: [
+                  _TestButtonsScreen(
+                    tripIdController: tripIdController,
+                    driverIdController: driverIdController,
+                    radiusController: radiusController,
+                    actualDistanceController: actualDistanceController,
+                    actualDurationController: actualDurationController,
+                    loading: loading,
+                    canRequestDispatch: loggedIn && hasTripId,
+                    canDriverAction: loggedIn && hasTripId && hasDriverId,
+                    onRequestDispatch: _requestDispatch,
+                    onAccept: _acceptTrip,
+                    onStart: _startTrip,
+                    onFinish: _finishTrip,
+                  ),
+                ],
+              ),
+              SwitchListTile(
+                value: debugVisible,
+                onChanged: (value) => setState(() => debugVisible = value),
+                title: const Text('Mostrar debug'),
+                secondary: const Icon(Icons.bug_report),
+              ),
+              if (debugVisible) _ResponsePanel(response: lastResponse),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _clearSession,
+                icon: const Icon(Icons.logout),
+                label: const Text('Sair'),
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: 'Limpar token',
-            onPressed: _clearSession,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: IndexedStack(
-          index: tabIndex,
-          children: [
-            _LoginScreen(
-              baseUrlController: baseUrlController,
-              emailController: emailController,
-              passwordController: passwordController,
-              loggedIn: loggedIn,
-              loading: loading,
-              liveStatus: liveStatus,
-              onLogin: _login,
-            ),
-            _CreateTripScreen(
-              passengerCpfController: passengerCpfController,
-              passengerBirthDateController: passengerBirthDateController,
-              passengerPhoneController: passengerPhoneController,
-              passengerEmergencyPhoneController:
-                  passengerEmergencyPhoneController,
-              passengerAddressController: passengerAddressController,
-              passengerCityController: passengerCityController,
-              passengerStateController: passengerStateController,
-              passengerZipCodeController: passengerZipCodeController,
-              passengerIdController: passengerIdController,
-              tripIdController: tripIdController,
-              originController: originController,
-              destinationController: destinationController,
-              originLatController: originLatController,
-              originLngController: originLngController,
-              destinationLatController: destinationLatController,
-              destinationLngController: destinationLngController,
-              loading: loading,
-              canCreateTrip: loggedIn,
-              passengerLoaded: passenger != null,
-              onSavePassenger: _savePassenger,
-              onCreateTrip: _createTrip,
-            ),
-            _StatusScreen(
-              tripIdController: tripIdController,
-              tripStatus: tripStatus,
-              liveStatus: liveStatus,
-              originPoint: originPoint,
-              destinationPoint: destinationPoint,
-              driverPoint: driverPoint,
-              mapController: mapController,
-              loading: loading,
-              onRefresh: _getTrip,
-            ),
-            _TestButtonsScreen(
-              tripIdController: tripIdController,
-              driverIdController: driverIdController,
-              radiusController: radiusController,
-              actualDistanceController: actualDistanceController,
-              actualDurationController: actualDurationController,
-              loading: loading,
-              canRequestDispatch: loggedIn && hasTripId,
-              canDriverAction: loggedIn && hasTripId && hasDriverId,
-              onRequestDispatch: _requestDispatch,
-              onAccept: _acceptTrip,
-              onStart: _startTrip,
-              onFinish: _finishTrip,
-            ),
-          ],
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: tabIndex,
-        onDestinationSelected: (value) => setState(() => tabIndex = value),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.login), label: 'Login'),
-          NavigationDestination(icon: Icon(Icons.add_road), label: 'Solicitar'),
-          NavigationDestination(icon: Icon(Icons.map), label: 'Status'),
-          NavigationDestination(icon: Icon(Icons.tune), label: 'Testes'),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: FlutterMap(
+              mapController: mapController,
+              options: const MapOptions(
+                initialCenter: LatLng(-23.555, -46.645),
+                initialZoom: 13,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.ridepr.passenger',
+                ),
+                MarkerLayer(markers: _markers()),
+              ],
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Builder(
+                    builder: (context) => FloatingActionButton.small(
+                      heroTag: 'menu',
+                      onPressed: () => Scaffold.of(context).openEndDrawer(),
+                      child: const Icon(Icons.menu),
+                    ),
+                  ),
+                  const Spacer(),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black26, blurRadius: 12),
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            loggedIn ? Icons.check_circle : Icons.login,
+                            size: 18,
+                            color: loggedIn ? Colors.green : Colors.black54,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(loggedIn ? 'Conectado' : 'Entrar'),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: _PassengerRideCard(
+              loggedIn: loggedIn,
+              loading: loading,
+              passengerReady: passenger != null,
+              tripStatus: tripStatus,
+              liveStatus: liveStatus,
+              originController: originController,
+              destinationController: destinationController,
+              onLogin: _login,
+              onSavePassenger: _savePassenger,
+              onCreateTrip: _createTrip,
+              onRefresh: hasTripId ? _getTrip : null,
+            ),
+          ),
         ],
       ),
-      bottomSheet: debugVisible ? _ResponsePanel(response: lastResponse) : null,
+    );
+  }
+
+  List<Marker> _markers() {
+    return [
+      if (originPoint != null)
+        _mapMarker(originPoint!, Icons.trip_origin, Colors.green),
+      if (destinationPoint != null)
+        _mapMarker(destinationPoint!, Icons.flag, Colors.red),
+      if (driverPoint != null)
+        _mapMarker(driverPoint!, Icons.local_taxi, Colors.blue),
+    ];
+  }
+
+  static Marker _mapMarker(LatLng point, IconData icon, Color color) {
+    return Marker(
+      point: point,
+      width: 44,
+      height: 44,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: color, width: 2),
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Icon(icon, color: color),
+      ),
     );
   }
 
@@ -351,7 +452,6 @@ class _MvpTestHomeState extends State<MvpTestHome> {
         userId = loggedUserId;
         await _loadPassenger();
         await _connectRealtime();
-        tabIndex = 1;
       }
 
       return result;
@@ -380,7 +480,6 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       if (result.success && trip != null && tripId != null) {
         tripIdController.text = tripId;
         _applyTrip(trip, eventName: 'TripRequested');
-        tabIndex = 2;
       }
 
       return result;
@@ -502,10 +601,16 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   }
 
   Future<void> _connectRealtime() async {
-    await hubConnection?.stop();
-
     final hubUrl =
         '${baseUrlController.text.trim().replaceAll(RegExp(r'/+$'), '')}/driverHub';
+
+    if (connectedHubUrl == hubUrl &&
+        hubConnection?.state == HubConnectionState.Connected) {
+      return;
+    }
+
+    await hubConnection?.stop();
+
     final options = HttpConnectionOptions(
       accessTokenFactory: () async => accessToken ?? '',
     );
@@ -546,11 +651,17 @@ class _MvpTestHomeState extends State<MvpTestHome> {
         return;
       }
 
+      final nextPoint = LatLng(
+        _numField(location, 'latitude'),
+        _numField(location, 'longitude'),
+      );
+
+      if (_samePoint(driverPoint, nextPoint)) {
+        return;
+      }
+
       setState(() {
-        driverPoint = LatLng(
-          _numField(location, 'latitude'),
-          _numField(location, 'longitude'),
-        );
+        driverPoint = nextPoint;
         liveStatus = 'Localizacao do motorista atualizada';
         lastResponse = _prettyRealtime('DriverLocationUpdated', location);
       });
@@ -562,6 +673,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     if (mounted) {
       setState(() {
         hubConnection = connection;
+        connectedHubUrl = hubUrl;
         liveStatus = 'SignalR conectado.';
       });
     }
@@ -620,7 +732,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   void _moveMapToVisiblePoint() {
     final point = driverPoint ?? originPoint ?? destinationPoint;
 
-    if (point != null) {
+    if (point != null && !_samePoint(lastCenteredPoint, point)) {
+      lastCenteredPoint = point;
       mapController.move(point, 14);
     }
   }
@@ -631,9 +744,19 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       accessToken = null;
       api.accessToken = null;
       hubConnection = null;
+      connectedHubUrl = null;
       liveStatus = 'SignalR desconectado.';
       lastResponse = 'Token removido da memoria.';
     });
+  }
+
+  static bool _samePoint(LatLng? left, LatLng? right) {
+    if (left == null || right == null) {
+      return false;
+    }
+
+    return (left.latitude - right.latitude).abs() < 0.00001 &&
+        (left.longitude - right.longitude).abs() < 0.00001;
   }
 
   static String _friendlyError(String message) {
@@ -943,95 +1066,6 @@ class _CreateTripScreen extends StatelessWidget {
   }
 }
 
-class _StatusScreen extends StatelessWidget {
-  const _StatusScreen({
-    required this.tripIdController,
-    required this.tripStatus,
-    required this.liveStatus,
-    required this.originPoint,
-    required this.destinationPoint,
-    required this.driverPoint,
-    required this.mapController,
-    required this.loading,
-    required this.onRefresh,
-  });
-
-  final TextEditingController tripIdController;
-  final String tripStatus;
-  final String liveStatus;
-  final LatLng? originPoint;
-  final LatLng? destinationPoint;
-  final LatLng? driverPoint;
-  final MapController mapController;
-  final bool loading;
-  final VoidCallback onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    return _ScreenFrame(
-      title: 'Sua corrida',
-      children: [
-        Text(
-          tripStatus,
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        _StatusPill(text: liveStatus, icon: Icons.wifi_tethering),
-        SizedBox(
-          height: 360,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: FlutterMap(
-              mapController: mapController,
-              options: const MapOptions(
-                initialCenter: LatLng(-23.555, -46.645),
-                initialZoom: 13,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.ridepr.passenger',
-                ),
-                MarkerLayer(
-                  markers: [
-                    if (originPoint != null)
-                      _mapMarker(originPoint!, Icons.trip_origin, Colors.green),
-                    if (destinationPoint != null)
-                      _mapMarker(destinationPoint!, Icons.flag, Colors.red),
-                    if (driverPoint != null)
-                      _mapMarker(driverPoint!, Icons.local_taxi, Colors.blue),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        _Input(controller: tripIdController, label: 'TripId'),
-        FilledButton.icon(
-          onPressed: loading ? null : onRefresh,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Consultar corrida'),
-        ),
-      ],
-    );
-  }
-
-  static Marker _mapMarker(LatLng point, IconData icon, Color color) {
-    return Marker(
-      point: point,
-      width: 44,
-      height: 44,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: color, width: 2),
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Icon(icon, color: color),
-      ),
-    );
-  }
-}
-
 class _TestButtonsScreen extends StatelessWidget {
   const _TestButtonsScreen({
     required this.tripIdController,
@@ -1098,6 +1132,178 @@ class _TestButtonsScreen extends StatelessWidget {
           label: const Text('Finalizar corrida'),
         ),
       ],
+    );
+  }
+}
+
+class _PassengerRideCard extends StatelessWidget {
+  const _PassengerRideCard({
+    required this.loggedIn,
+    required this.loading,
+    required this.passengerReady,
+    required this.tripStatus,
+    required this.liveStatus,
+    required this.originController,
+    required this.destinationController,
+    required this.onLogin,
+    required this.onSavePassenger,
+    required this.onCreateTrip,
+    required this.onRefresh,
+  });
+
+  final bool loggedIn;
+  final bool loading;
+  final bool passengerReady;
+  final String tripStatus;
+  final String liveStatus;
+  final TextEditingController originController;
+  final TextEditingController destinationController;
+  final VoidCallback onLogin;
+  final VoidCallback onSavePassenger;
+  final VoidCallback onCreateTrip;
+  final VoidCallback? onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 22,
+              offset: Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.local_taxi),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _headline,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ),
+                if (onRefresh != null)
+                  IconButton(
+                    tooltip: 'Atualizar',
+                    onPressed: loading ? null : onRefresh,
+                    icon: const Icon(Icons.refresh),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _RideInput(
+              controller: originController,
+              icon: Icons.trip_origin,
+              label: 'Origem',
+            ),
+            const SizedBox(height: 10),
+            _RideInput(
+              controller: destinationController,
+              icon: Icons.flag,
+              label: 'Destino',
+            ),
+            const SizedBox(height: 12),
+            Text(tripStatus, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              liveStatus.replaceFirst('SignalR', 'Tempo real'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: loading ? null : _primaryAction,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                textStyle: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              child: Text(loading ? 'Aguarde...' : _buttonText),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String get _headline {
+    if (!loggedIn) {
+      return 'Para onde vamos?';
+    }
+
+    if (!passengerReady) {
+      return 'Complete seu cadastro';
+    }
+
+    return 'Escolha sua corrida';
+  }
+
+  String get _buttonText {
+    if (!loggedIn) {
+      return 'Entrar';
+    }
+
+    if (!passengerReady) {
+      return 'Salvar cadastro';
+    }
+
+    return 'Pedir corrida';
+  }
+
+  VoidCallback get _primaryAction {
+    if (!loggedIn) {
+      return onLogin;
+    }
+
+    if (!passengerReady) {
+      return onSavePassenger;
+    }
+
+    return onCreateTrip;
+  }
+}
+
+class _RideInput extends StatelessWidget {
+  const _RideInput({
+    required this.controller,
+    required this.icon,
+    required this.label,
+  });
+
+  final TextEditingController controller;
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: const Color(0xfff2f4f7),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide.none,
+        ),
+        prefixIcon: Icon(icon),
+        labelText: label,
+      ),
     );
   }
 }
