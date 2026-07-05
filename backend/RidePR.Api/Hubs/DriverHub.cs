@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using RidePR.Api.Services;
 using RidePR.Application.Services;
 
 namespace RidePR.Api.Hubs;
@@ -10,6 +11,16 @@ public class DriverHub : Hub
     public DriverHub(DriverLocationService locationService)
     {
         _locationService = locationService;
+    }
+
+    public async Task JoinDriverGroup(Guid driverId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, SignalRDispatchNotifier.GetDriverGroup(driverId));
+    }
+
+    public async Task LeaveDriverGroup(Guid driverId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, SignalRDispatchNotifier.GetDriverGroup(driverId));
     }
 
     public async Task UpdateLocation(

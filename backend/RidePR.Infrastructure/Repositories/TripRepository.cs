@@ -24,6 +24,12 @@ public class TripRepository : ITripRepository
         return await _context.Trips.FirstOrDefaultAsync(x => x.Id == id);
     }
 
+    public Task UpdateAsync(Trip trip)
+    {
+        _context.Trips.Update(trip);
+        return Task.CompletedTask;
+    }
+
     public async Task SaveChangesAsync()
     {
         await _context.SaveChangesAsync();
