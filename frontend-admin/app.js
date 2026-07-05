@@ -29,8 +29,47 @@ function show(statusCode, body) {
   $('responseBox').textContent = `HTTP ${statusCode}\n${payload || '(no body)'}`;
 }
 
+function statusLabel(status) {
+  const normalized = String(status ?? '');
+
+  return {
+    0: 'Solicitada',
+    1: 'Aceita',
+    2: 'Em andamento',
+    3: 'Finalizada',
+    Requested: 'Solicitada',
+    Accepted: 'Aceita',
+    InProgress: 'Em andamento',
+    Finished: 'Finalizada',
+  }[normalized] ?? normalized || 'Desconhecido';
+}
+
+function eventLabel(eventName) {
+  return {
+    TripRequested: 'Corrida solicitada',
+    TripAccepted: 'Corrida aceita',
+    TripStarted: 'Corrida iniciada',
+    TripFinished: 'Corrida finalizada',
+    DriverLocationUpdated: 'Localizacao do motorista atualizada',
+    'Status consultado': 'Status consultado',
+  }[eventName] ?? eventName;
+}
+
 function setLiveStatus(message) {
   $('liveStatus').textContent = message;
+}
+
+function setButtonStates() {
+  const hasToken = Boolean(accessToken);
+  const hasTripId = Boolean($('tripId').value.trim());
+  const hasDriverId = Boolean($('driverId').value.trim());
+
+  $('createTripButton').disabled = !hasToken;
+  $('getTripButton').disabled = !hasToken || !hasTripId;
+  $('requestDispatchButton').disabled = !hasToken || !hasTripId;
+  $('acceptTripButton').disabled = !hasToken || !hasTripId || !hasDriverId;
+  $('startTripButton').disabled = !hasToken || !hasTripId || !hasDriverId;
+  $('finishTripButton').disabled = !hasToken || !hasTripId || !hasDriverId;
 }
 
 function field(source, name) {
@@ -96,13 +135,14 @@ function updateTripMap(trip, eventName = 'Corrida atualizada') {
   const originLongitude = Number(field(trip, 'OriginLongitude'));
   const destinationLatitude = Number(field(trip, 'DestinationLatitude'));
   const destinationLongitude = Number(field(trip, 'DestinationLongitude'));
-  const status = field(trip, 'Status') ?? 'Status desconhecido';
+  const status = statusLabel(field(trip, 'Status'));
   const tripId = field(trip, 'Id');
 
   originMarker = markerAt(originMarker, originLatitude, originLongitude, 'Origem');
   destinationMarker = markerAt(destinationMarker, destinationLatitude, destinationLongitude, 'Destino');
   fitMap();
-  setLiveStatus(`${eventName}: ${status}${tripId ? ` (${tripId})` : ''}`);
+  setLiveStatus(`${eventLabel(eventName)}: ${status}${tripId ? ` (${tripId})` : ''}`);
+  setButtonStates();
 }
 
 function updateDriverLocation(location) {
@@ -114,7 +154,7 @@ function updateDriverLocation(location) {
 
   driverMarker = markerAt(driverMarker, latitude, longitude, `Motorista ${driverId}`);
   fitMap();
-  setLiveStatus(`DriverLocationUpdated: ${driverId}`);
+  setLiveStatus(`${eventLabel('DriverLocationUpdated')}: ${driverId}`);
 }
 
 function requireValue(id, label) {
@@ -174,6 +214,7 @@ async function login() {
     accessToken = body.accessToken;
     $('tokenStatus').textContent = 'Token admin salvo em memoria.';
     await connectRealtime();
+    setButtonStates();
   }
 }
 
@@ -195,6 +236,7 @@ async function createTrip() {
   if (response?.ok && body?.id) {
     $('tripId').value = body.id;
     updateTripMap(body, 'TripRequested');
+    setButtonStates();
   }
 }
 
@@ -319,9 +361,10 @@ $('clearTokenButton').addEventListener('click', () => {
     hubConnection.stop();
     hubConnection = null;
   }
-  $('tokenStatus').textContent = 'Sem token em memoria.';
+    $('tokenStatus').textContent = 'Sem token em memoria.';
   show(0, 'Token removido da memoria.');
   setLiveStatus('SignalR desconectado.');
+  setButtonStates();
 });
 $('createTripButton').addEventListener('click', createTrip);
 $('getTripButton').addEventListener('click', getTrip);
@@ -334,4 +377,9 @@ document.querySelectorAll('[data-list]').forEach((button) => {
   button.addEventListener('click', () => list(button.dataset.list));
 });
 
+['tripId', 'driverId'].forEach((id) => {
+  $(id).addEventListener('input', setButtonStates);
+});
+
 initMap();
+setButtonStates();

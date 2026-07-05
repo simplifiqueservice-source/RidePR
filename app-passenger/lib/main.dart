@@ -110,6 +110,15 @@ class ApiResult {
   }
 }
 
+class LocalValidationException implements Exception {
+  LocalValidationException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class MvpTestHome extends StatefulWidget {
   const MvpTestHome({super.key});
 
@@ -154,10 +163,21 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   LatLng? driverPoint;
 
   bool get loggedIn => accessToken != null && accessToken!.isNotEmpty;
+  bool get hasTripId => tripIdController.text.trim().isNotEmpty;
+  bool get hasDriverId => driverIdController.text.trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    tripIdController.addListener(_refreshActionState);
+    driverIdController.addListener(_refreshActionState);
+  }
 
   @override
   void dispose() {
     hubConnection?.stop();
+    tripIdController.removeListener(_refreshActionState);
+    driverIdController.removeListener(_refreshActionState);
     baseUrlController.dispose();
     emailController.dispose();
     passwordController.dispose();
@@ -174,6 +194,12 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     actualDistanceController.dispose();
     actualDurationController.dispose();
     super.dispose();
+  }
+
+  void _refreshActionState() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -212,6 +238,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
               destinationLatController: destinationLatController,
               destinationLngController: destinationLngController,
               loading: loading,
+              canCreateTrip: loggedIn,
               onCreateTrip: _createTrip,
             ),
             _StatusScreen(
@@ -232,6 +259,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
               actualDistanceController: actualDistanceController,
               actualDurationController: actualDurationController,
               loading: loading,
+              canRequestDispatch: loggedIn && hasTripId,
+              canDriverAction: loggedIn && hasTripId && hasDriverId,
               onRequestDispatch: _requestDispatch,
               onAccept: _acceptTrip,
               onStart: _startTrip,
@@ -304,6 +333,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   Future<void> _requestDispatch() async {
     await _run(() {
+      _requireLoggedIn();
+      _requireTripId();
       return api.post('/api/dispatch/request', {
         'tripId': tripIdController.text.trim(),
         'radiusKm': _doubleValue(radiusController),
@@ -315,6 +346,9 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   Future<void> _acceptTrip() async {
     await _run(() {
+      _requireLoggedIn();
+      _requireTripId();
+      _requireDriverId();
       return api.post('/api/dispatch/accept', {
         'tripId': tripIdController.text.trim(),
         'driverId': driverIdController.text.trim(),
@@ -324,6 +358,9 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   Future<void> _startTrip() async {
     await _run(() {
+      _requireLoggedIn();
+      _requireTripId();
+      _requireDriverId();
       return api.post('/api/trips/${tripIdController.text.trim()}/start', {
         'driverId': driverIdController.text.trim(),
       });
@@ -332,6 +369,9 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   Future<void> _finishTrip() async {
     await _run(() {
+      _requireLoggedIn();
+      _requireTripId();
+      _requireDriverId();
       return api.post('/api/trips/${tripIdController.text.trim()}/finish', {
         'driverId': driverIdController.text.trim(),
         'actualDistanceKm': _doubleValue(actualDistanceController),
@@ -342,6 +382,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   Future<void> _getTrip() async {
     await _run(() async {
+      _requireLoggedIn();
+      _requireTripId();
       final result = await api.get('/api/trips/${tripIdController.text.trim()}');
 
       if (result.success && result.body is Map<String, dynamic>) {
@@ -402,7 +444,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
           _numField(location, 'latitude'),
           _numField(location, 'longitude'),
         );
-        liveStatus = 'DriverLocationUpdated';
+        liveStatus = 'Localizacao do motorista atualizada';
         lastResponse = _prettyRealtime('DriverLocationUpdated', location);
       });
       _moveMapToVisiblePoint();
@@ -437,7 +479,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   void _applyTrip(Map<String, dynamic> trip, {required String eventName}) {
     setState(() {
       tripIdController.text = '${_field(trip, 'id') ?? tripIdController.text}';
-      tripStatus = '$eventName: ${_field(trip, 'status') ?? 'sem status'}';
+      tripStatus =
+          '${_eventLabel(eventName)}: ${_statusLabel(_field(trip, 'status'))}';
       originPoint = LatLng(
         _numField(trip, 'originLatitude'),
         _numField(trip, 'originLongitude'),
@@ -486,6 +529,45 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   static double _doubleValue(TextEditingController controller) {
     return double.tryParse(controller.text.trim().replaceAll(',', '.')) ?? 0;
+  }
+
+  void _requireLoggedIn() {
+    if (!loggedIn) {
+      throw LocalValidationException('Faca login antes de continuar.');
+    }
+  }
+
+  void _requireTripId() {
+    if (!hasTripId) {
+      throw LocalValidationException('Crie uma corrida ou informe o TripId.');
+    }
+  }
+
+  void _requireDriverId() {
+    if (!hasDriverId) {
+      throw LocalValidationException('Informe o DriverId do motorista.');
+    }
+  }
+
+  static String _statusLabel(Object? value) {
+    return switch ('$value') {
+      '0' || 'Requested' => 'Solicitada',
+      '1' || 'Accepted' => 'Aceita',
+      '2' || 'InProgress' => 'Em andamento',
+      '3' || 'Finished' => 'Finalizada',
+      _ => '$value',
+    };
+  }
+
+  static String _eventLabel(String value) {
+    return switch (value) {
+      'TripRequested' => 'Corrida solicitada',
+      'TripAccepted' => 'Corrida aceita',
+      'TripStarted' => 'Corrida iniciada',
+      'TripFinished' => 'Corrida finalizada',
+      'Status' => 'Status consultado',
+      _ => value,
+    };
   }
 
   static String _prettyRealtime(String eventName, Map<String, dynamic> data) {
@@ -548,6 +630,7 @@ class _CreateTripScreen extends StatelessWidget {
     required this.destinationLatController,
     required this.destinationLngController,
     required this.loading,
+    required this.canCreateTrip,
     required this.onCreateTrip,
   });
 
@@ -560,6 +643,7 @@ class _CreateTripScreen extends StatelessWidget {
   final TextEditingController destinationLatController;
   final TextEditingController destinationLngController;
   final bool loading;
+  final bool canCreateTrip;
   final VoidCallback onCreateTrip;
 
   @override
@@ -600,7 +684,7 @@ class _CreateTripScreen extends StatelessWidget {
           ],
         ),
         FilledButton.icon(
-          onPressed: loading ? null : onCreateTrip,
+          onPressed: loading || !canCreateTrip ? null : onCreateTrip,
           icon: const Icon(Icons.local_taxi),
           label: const Text('Criar corrida'),
         ),
@@ -703,6 +787,8 @@ class _TestButtonsScreen extends StatelessWidget {
     required this.actualDistanceController,
     required this.actualDurationController,
     required this.loading,
+    required this.canRequestDispatch,
+    required this.canDriverAction,
     required this.onRequestDispatch,
     required this.onAccept,
     required this.onStart,
@@ -715,6 +801,8 @@ class _TestButtonsScreen extends StatelessWidget {
   final TextEditingController actualDistanceController;
   final TextEditingController actualDurationController;
   final bool loading;
+  final bool canRequestDispatch;
+  final bool canDriverAction;
   final VoidCallback onRequestDispatch;
   final VoidCallback onAccept;
   final VoidCallback onStart;
@@ -737,22 +825,22 @@ class _TestButtonsScreen extends StatelessWidget {
           label: 'Duracao final minutos',
         ),
         FilledButton.icon(
-          onPressed: loading ? null : onRequestDispatch,
+          onPressed: loading || !canRequestDispatch ? null : onRequestDispatch,
           icon: const Icon(Icons.radar),
           label: const Text('Solicitar dispatch'),
         ),
         FilledButton.icon(
-          onPressed: loading ? null : onAccept,
+          onPressed: loading || !canDriverAction ? null : onAccept,
           icon: const Icon(Icons.check_circle),
           label: const Text('Aceitar corrida'),
         ),
         FilledButton.icon(
-          onPressed: loading ? null : onStart,
+          onPressed: loading || !canDriverAction ? null : onStart,
           icon: const Icon(Icons.play_arrow),
           label: const Text('Iniciar corrida'),
         ),
         FilledButton.icon(
-          onPressed: loading ? null : onFinish,
+          onPressed: loading || !canDriverAction ? null : onFinish,
           icon: const Icon(Icons.flag),
           label: const Text('Finalizar corrida'),
         ),

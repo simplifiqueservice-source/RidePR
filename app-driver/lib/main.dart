@@ -406,6 +406,14 @@ class _DriverHomePageState extends State<DriverHomePage> {
                     trip: activeTrip,
                     actualDistance: actualDistance,
                     actualDuration: actualDuration,
+                    canStart: _tripStatusLabel(
+                          activeTrip?['status'] ?? activeTrip?['Status'],
+                        ) ==
+                        'Accepted',
+                    canFinish: _tripStatusLabel(
+                          activeTrip?['status'] ?? activeTrip?['Status'],
+                        ) ==
+                        'InProgress',
                     onStart: activeTrip == null
                         ? null
                         : () => _startTrip(_id(activeTrip!)),
@@ -810,6 +818,16 @@ class _DriverHomePageState extends State<DriverHomePage> {
     };
   }
 
+  static String _tripStatusText(Object? value) {
+    return switch (_tripStatusLabel(value)) {
+      'Requested' => 'Solicitada',
+      'Accepted' => 'Aceita',
+      'InProgress' => 'Em andamento',
+      'Finished' => 'Finalizada',
+      _ => '$value',
+    };
+  }
+
   static int _driverStatusNumber(Object? value) {
     return switch ('$value') {
       '1' || 'Offline' => 1,
@@ -822,10 +840,10 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
   static String _driverStatusLabel(Object? value) {
     return switch ('$value') {
-      '1' => 'Offline',
-      '2' => 'Online',
-      '3' => 'Busy',
-      '4' => 'Paused',
+      '1' || 'Offline' => 'Offline',
+      '2' || 'Online' => 'Online',
+      '3' || 'Busy' => 'Ocupado',
+      '4' || 'Paused' => 'Pausado',
       _ => '$value',
     };
   }
@@ -934,6 +952,8 @@ class _ActiveTripCard extends StatelessWidget {
     required this.trip,
     required this.actualDistance,
     required this.actualDuration,
+    required this.canStart,
+    required this.canFinish,
     required this.onStart,
     required this.onFinish,
   });
@@ -941,6 +961,8 @@ class _ActiveTripCard extends StatelessWidget {
   final Map<String, dynamic>? trip;
   final TextEditingController actualDistance;
   final TextEditingController actualDuration;
+  final bool canStart;
+  final bool canFinish;
   final VoidCallback? onStart;
   final VoidCallback? onFinish;
 
@@ -956,7 +978,9 @@ class _ActiveTripCard extends StatelessWidget {
                 Text('ID: ${trip!['id'] ?? trip!['Id']}'),
                 Text('Origem: ${trip!['origin'] ?? trip!['Origin']}'),
                 Text('Destino: ${trip!['destination'] ?? trip!['Destination']}'),
-                Text('Status: ${trip!['status'] ?? trip!['Status']}'),
+                Text(
+                  'Status: ${_DriverHomePageState._tripStatusText(trip!['status'] ?? trip!['Status'])}',
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -979,7 +1003,7 @@ class _ActiveTripCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: onStart,
+                        onPressed: canStart ? onStart : null,
                         icon: const Icon(Icons.play_arrow),
                         label: const Text('Iniciar'),
                       ),
@@ -987,7 +1011,7 @@ class _ActiveTripCard extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: onFinish,
+                        onPressed: canFinish ? onFinish : null,
                         icon: const Icon(Icons.flag),
                         label: const Text('Finalizar'),
                       ),
