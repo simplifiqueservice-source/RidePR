@@ -8,6 +8,7 @@ namespace RidePR.Infrastructure.Dispatch;
 public class RedisDispatchQueue : IDispatchQueue
 {
     private const string ActiveTripsKey = "dispatch:active-trips";
+    private static readonly SemaphoreSlim ActiveTripsLock = new(1, 1);
     private readonly IDistributedCache _cache;
 
     public RedisDispatchQueue(IDistributedCache cache)
@@ -34,21 +35,39 @@ public class RedisDispatchQueue : IDispatchQueue
                 SlidingExpiration = TimeSpan.FromHours(2)
             });
 
-        var activeTripIds = await GetActiveTripIdsAsync();
+        await ActiveTripsLock.WaitAsync();
 
-        if (!activeTripIds.Contains(state.TripId))
-            activeTripIds.Add(state.TripId);
+        try
+        {
+            var activeTripIds = await GetActiveTripIdsAsync();
 
-        await SetActiveTripIdsAsync(activeTripIds);
+            if (!activeTripIds.Contains(state.TripId))
+                activeTripIds.Add(state.TripId);
+
+            await SetActiveTripIdsAsync(activeTripIds);
+        }
+        finally
+        {
+            ActiveTripsLock.Release();
+        }
     }
 
     public async Task RemoveAsync(Guid tripId)
     {
         await _cache.RemoveAsync(GetTripKey(tripId));
 
-        var activeTripIds = await GetActiveTripIdsAsync();
-        activeTripIds.Remove(tripId);
-        await SetActiveTripIdsAsync(activeTripIds);
+        await ActiveTripsLock.WaitAsync();
+
+        try
+        {
+            var activeTripIds = await GetActiveTripIdsAsync();
+            activeTripIds.Remove(tripId);
+            await SetActiveTripIdsAsync(activeTripIds);
+        }
+        finally
+        {
+            ActiveTripsLock.Release();
+        }
     }
 
     public async Task<List<Guid>> GetActiveTripIdsAsync()

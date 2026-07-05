@@ -334,7 +334,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
                     child: Column(
                       children: [
                         DropdownButtonFormField<int>(
-                          value: selectedStatus,
+                          initialValue: selectedStatus,
                           decoration: const InputDecoration(labelText: 'Status'),
                           items: const [
                             DropdownMenuItem(value: 1, child: Text('Offline')),

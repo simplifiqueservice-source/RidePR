@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using RidePR.Api.Services;
 using RidePR.Application.Services;
 
 namespace RidePR.Api.Hubs;
 
+[Authorize(Roles = "Administrator,Driver")]
 public class DriverHub : Hub
 {
     private readonly DriverLocationService _locationService;

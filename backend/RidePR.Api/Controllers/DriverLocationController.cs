@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RidePR.Application.Services;
 
 namespace RidePR.Api.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Administrator,Driver")]
 [Route("api/driver-location")]
 public class DriverLocationController : ControllerBase
 {

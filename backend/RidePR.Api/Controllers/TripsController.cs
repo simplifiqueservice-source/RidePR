@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RidePR.Application.DTOs;
 using RidePR.Application.Services;
@@ -5,6 +6,7 @@ using RidePR.Application.Services;
 namespace RidePR.Api.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Administrator,Passenger")]
 [Route("api/[controller]")]
 public class TripsController : ControllerBase
 {

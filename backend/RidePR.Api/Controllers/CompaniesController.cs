@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RidePR.Domain.Entities;
@@ -6,6 +7,7 @@ using RidePR.Infrastructure.Data;
 namespace RidePR.Api.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Administrator")]
 [Route("api/companies")]
 public class CompaniesController : ControllerBase
 {
