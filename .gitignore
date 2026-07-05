@@ -1,0 +1,48 @@
+# Build
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# Temp
+*.tmp
+*.cache
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# NuGet
+packages/
+*.nupkg
+
+# Publish
+publish/
+
+# Test Results
+TestResults/
+
+# Docker
+docker-data/
+
+# Node
+node_modules/
+
+# Flutter
+.dart_tool/
+build/
+
+# Secrets
+appsettings.Development.json
