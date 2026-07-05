@@ -115,6 +115,13 @@ public class PassengerService
         if (passenger == null)
             return Result<PassengerResponseDto>.Fail("Passageiro nao encontrado.");
 
+        var normalizedCpf = dto.Cpf.Trim();
+
+        if (await _passengerRepository.CpfExistsAsync(normalizedCpf, id))
+            return Result<PassengerResponseDto>.Fail("CPF ja cadastrado.");
+
+        passenger.Cpf = normalizedCpf;
+        passenger.BirthDate = ToUtc(dto.BirthDate);
         passenger.Phone = dto.Phone.Trim();
         passenger.EmergencyPhone = dto.EmergencyPhone.Trim();
         passenger.Address = dto.Address.Trim();

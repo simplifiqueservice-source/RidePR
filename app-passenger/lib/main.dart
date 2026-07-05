@@ -54,6 +54,16 @@ class ApiClient {
     );
   }
 
+  Future<ApiResult> put(String path, Map<String, dynamic> body) async {
+    return _send(
+      () => http.put(
+        _uri(path),
+        headers: _headers(),
+        body: jsonEncode(body),
+      ),
+    );
+  }
+
   Map<String, String> _headers() {
     return {
       'Content-Type': 'application/json',
@@ -132,8 +142,16 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   final emailController =
       TextEditingController(text: 'passageiro.mvp@ridepr.test');
   final passwordController = TextEditingController(text: 'Senha123!');
-  final passengerIdController =
-      TextEditingController(text: '9e0d144e-6446-4f6a-a016-ac7cecd2d7b8');
+  final passengerIdController = TextEditingController();
+  final passengerCpfController = TextEditingController(text: '11122233344');
+  final passengerBirthDateController = TextEditingController(text: '1990-01-01');
+  final passengerPhoneController = TextEditingController(text: '11999990000');
+  final passengerEmergencyPhoneController =
+      TextEditingController(text: '11999990001');
+  final passengerAddressController = TextEditingController(text: 'Rua MVP');
+  final passengerCityController = TextEditingController(text: 'Sao Paulo');
+  final passengerStateController = TextEditingController(text: 'SP');
+  final passengerZipCodeController = TextEditingController(text: '01001000');
   final driverIdController =
       TextEditingController(text: 'd4ff8255-d3fe-4fb6-9fb9-2daaae8398c1');
   final tripIdController = TextEditingController();
@@ -158,6 +176,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   String liveStatus = 'SignalR desconectado.';
   String tripStatus = 'Sem corrida.';
   String lastResponse = 'Nenhuma chamada executada ainda.';
+  String? userId;
+  Map<String, dynamic>? passenger;
   LatLng? originPoint;
   LatLng? destinationPoint;
   LatLng? driverPoint;
@@ -182,6 +202,14 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     emailController.dispose();
     passwordController.dispose();
     passengerIdController.dispose();
+    passengerCpfController.dispose();
+    passengerBirthDateController.dispose();
+    passengerPhoneController.dispose();
+    passengerEmergencyPhoneController.dispose();
+    passengerAddressController.dispose();
+    passengerCityController.dispose();
+    passengerStateController.dispose();
+    passengerZipCodeController.dispose();
     driverIdController.dispose();
     tripIdController.dispose();
     originController.dispose();
@@ -229,6 +257,15 @@ class _MvpTestHomeState extends State<MvpTestHome> {
               onLogin: _login,
             ),
             _CreateTripScreen(
+              passengerCpfController: passengerCpfController,
+              passengerBirthDateController: passengerBirthDateController,
+              passengerPhoneController: passengerPhoneController,
+              passengerEmergencyPhoneController:
+                  passengerEmergencyPhoneController,
+              passengerAddressController: passengerAddressController,
+              passengerCityController: passengerCityController,
+              passengerStateController: passengerStateController,
+              passengerZipCodeController: passengerZipCodeController,
               passengerIdController: passengerIdController,
               tripIdController: tripIdController,
               originController: originController,
@@ -239,6 +276,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
               destinationLngController: destinationLngController,
               loading: loading,
               canCreateTrip: loggedIn,
+              passengerLoaded: passenger != null,
+              onSavePassenger: _savePassenger,
               onCreateTrip: _createTrip,
             ),
             _StatusScreen(
@@ -294,10 +333,15 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       final token = result.body is Map<String, dynamic>
           ? result.body['accessToken'] as String?
           : null;
+      final loggedUserId = result.body is Map<String, dynamic>
+          ? result.body['userId'] as String?
+          : null;
 
       if (result.success && token != null) {
         accessToken = token;
         api.accessToken = token;
+        userId = loggedUserId;
+        await _loadPassenger();
         await _connectRealtime();
       }
 
@@ -307,6 +351,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   Future<void> _createTrip() async {
     await _run(() async {
+      _requireLoggedIn();
+      _requirePassenger();
       final result = await api.post('/api/trips', {
         'passengerId': passengerIdController.text.trim(),
         'origin': originController.text.trim(),
@@ -325,6 +371,55 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       if (result.success && trip != null && tripId != null) {
         tripIdController.text = tripId;
         _applyTrip(trip, eventName: 'TripRequested');
+      }
+
+      return result;
+    });
+  }
+
+  Future<void> _loadPassenger() async {
+    if (userId == null || userId!.isEmpty) {
+      return;
+    }
+
+    final result = await api.get('/api/passengers/by-user/$userId');
+
+    if (!result.success || result.body is! Map<String, dynamic>) {
+      passenger = null;
+      return;
+    }
+
+    passenger = result.body as Map<String, dynamic>;
+    _fillPassengerForm(passenger!);
+  }
+
+  Future<void> _savePassenger() async {
+    await _run(() async {
+      _requireLoggedIn();
+
+      if (userId == null || userId!.isEmpty) {
+        throw LocalValidationException('Faca login novamente para salvar o passageiro.');
+      }
+
+      final body = {
+        'userId': userId,
+        'cpf': passengerCpfController.text.trim(),
+        'birthDate': _dateIso(passengerBirthDateController),
+        'phone': passengerPhoneController.text.trim(),
+        'emergencyPhone': passengerEmergencyPhoneController.text.trim(),
+        'address': passengerAddressController.text.trim(),
+        'city': passengerCityController.text.trim(),
+        'state': passengerStateController.text.trim(),
+        'zipCode': passengerZipCodeController.text.trim(),
+        'active': true,
+      };
+      final result = passenger == null
+          ? await api.post('/api/passengers', body)
+          : await api.put('/api/passengers/${_field(passenger!, 'id')}', body);
+
+      if (result.success && result.body is Map<String, dynamic>) {
+        passenger = result.body as Map<String, dynamic>;
+        _fillPassengerForm(passenger!);
       }
 
       return result;
@@ -549,6 +644,45 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     }
   }
 
+  void _requirePassenger() {
+    if (passengerIdController.text.trim().isEmpty) {
+      throw LocalValidationException('Salve o cadastro do passageiro antes de criar corrida.');
+    }
+  }
+
+  void _fillPassengerForm(Map<String, dynamic> source) {
+    passengerIdController.text = '${_field(source, 'id') ?? ''}';
+    passengerCpfController.text = '${_field(source, 'cpf') ?? ''}';
+    passengerBirthDateController.text = _dateValue(source, 'birthDate');
+    passengerPhoneController.text = '${_field(source, 'phone') ?? ''}';
+    passengerEmergencyPhoneController.text =
+        '${_field(source, 'emergencyPhone') ?? ''}';
+    passengerAddressController.text = '${_field(source, 'address') ?? ''}';
+    passengerCityController.text = '${_field(source, 'city') ?? ''}';
+    passengerStateController.text = '${_field(source, 'state') ?? ''}';
+    passengerZipCodeController.text = '${_field(source, 'zipCode') ?? ''}';
+  }
+
+  static String _dateValue(Map<String, dynamic> source, String key) {
+    final value = '${_field(source, key) ?? ''}';
+
+    if (value.length >= 10) {
+      return value.substring(0, 10);
+    }
+
+    return value;
+  }
+
+  static String _dateIso(TextEditingController controller) {
+    final value = controller.text.trim();
+
+    if (value.isEmpty) {
+      return DateTime.utc(1990).toIso8601String();
+    }
+
+    return DateTime.parse(value).toUtc().toIso8601String();
+  }
+
   static String _statusLabel(Object? value) {
     return switch ('$value') {
       '0' || 'Requested' => 'Solicitada',
@@ -621,6 +755,14 @@ class _LoginScreen extends StatelessWidget {
 
 class _CreateTripScreen extends StatelessWidget {
   const _CreateTripScreen({
+    required this.passengerCpfController,
+    required this.passengerBirthDateController,
+    required this.passengerPhoneController,
+    required this.passengerEmergencyPhoneController,
+    required this.passengerAddressController,
+    required this.passengerCityController,
+    required this.passengerStateController,
+    required this.passengerZipCodeController,
     required this.passengerIdController,
     required this.tripIdController,
     required this.originController,
@@ -631,9 +773,19 @@ class _CreateTripScreen extends StatelessWidget {
     required this.destinationLngController,
     required this.loading,
     required this.canCreateTrip,
+    required this.passengerLoaded,
+    required this.onSavePassenger,
     required this.onCreateTrip,
   });
 
+  final TextEditingController passengerCpfController;
+  final TextEditingController passengerBirthDateController;
+  final TextEditingController passengerPhoneController;
+  final TextEditingController passengerEmergencyPhoneController;
+  final TextEditingController passengerAddressController;
+  final TextEditingController passengerCityController;
+  final TextEditingController passengerStateController;
+  final TextEditingController passengerZipCodeController;
   final TextEditingController passengerIdController;
   final TextEditingController tripIdController;
   final TextEditingController originController;
@@ -644,6 +796,8 @@ class _CreateTripScreen extends StatelessWidget {
   final TextEditingController destinationLngController;
   final bool loading;
   final bool canCreateTrip;
+  final bool passengerLoaded;
+  final VoidCallback onSavePassenger;
   final VoidCallback onCreateTrip;
 
   @override
@@ -651,7 +805,35 @@ class _CreateTripScreen extends StatelessWidget {
     return _ScreenFrame(
       title: 'Solicitar corrida',
       children: [
+        Text(passengerLoaded
+            ? 'Passageiro vinculado ao usuario logado.'
+            : 'Complete o cadastro do passageiro.'),
         _Input(controller: passengerIdController, label: 'PassengerId'),
+        _Input(controller: passengerCpfController, label: 'CPF'),
+        _Input(
+          controller: passengerBirthDateController,
+          label: 'Nascimento (AAAA-MM-DD)',
+        ),
+        _Input(controller: passengerPhoneController, label: 'Telefone'),
+        _Input(
+          controller: passengerEmergencyPhoneController,
+          label: 'Telefone emergencia',
+        ),
+        _Input(controller: passengerAddressController, label: 'Endereco'),
+        Row(
+          children: [
+            Expanded(child: _Input(controller: passengerCityController, label: 'Cidade')),
+            const SizedBox(width: 8),
+            Expanded(child: _Input(controller: passengerStateController, label: 'UF')),
+            const SizedBox(width: 8),
+            Expanded(child: _Input(controller: passengerZipCodeController, label: 'CEP')),
+          ],
+        ),
+        FilledButton.icon(
+          onPressed: loading || !canCreateTrip ? null : onSavePassenger,
+          icon: const Icon(Icons.person),
+          label: Text(passengerLoaded ? 'Salvar passageiro' : 'Cadastrar passageiro'),
+        ),
         _Input(controller: tripIdController, label: 'TripId gerado/manual'),
         _Input(controller: originController, label: 'Origem'),
         _Input(controller: destinationController, label: 'Destino'),

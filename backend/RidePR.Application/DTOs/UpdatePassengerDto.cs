@@ -2,6 +2,10 @@ namespace RidePR.Application.DTOs;
 
 public class UpdatePassengerDto
 {
+    public string Cpf { get; set; } = "";
+
+    public DateTime BirthDate { get; set; }
+
     public string Phone { get; set; } = "";
 
     public string EmergencyPhone { get; set; } = "";

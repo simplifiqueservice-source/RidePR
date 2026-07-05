@@ -232,6 +232,10 @@ async function list(path) {
   if (path.startsWith('/api/vehicles')) {
     renderVehicles(body);
   }
+
+  if (path.startsWith('/api/passengers')) {
+    renderPassengers(body);
+  }
 }
 
 function pageItems(body) {
@@ -282,6 +286,27 @@ function renderVehicles(body) {
       <td>${cell(field(vehicle, 'Year'))}</td>
       <td>${cell(field(vehicle, 'Color'))}</td>
       <td>${field(vehicle, 'Active') ? 'Sim' : 'Nao'}</td>
+    </tr>
+  `).join('');
+}
+
+function renderPassengers(body) {
+  const rows = pageItems(body);
+  const table = $('passengersTableBody');
+
+  if (!rows.length) {
+    table.innerHTML = '<tr><td colspan="6">Nenhum passageiro encontrado.</td></tr>';
+    return;
+  }
+
+  table.innerHTML = rows.map((passenger) => `
+    <tr>
+      <td>${cell(field(passenger, 'Name'))}<br><span class="muted">${cell(field(passenger, 'Email'))}</span></td>
+      <td>${cell(field(passenger, 'Phone'))}</td>
+      <td>${cell(field(passenger, 'Cpf'))}</td>
+      <td>${cell(field(passenger, 'Address'))}<br><span class="muted">CEP ${cell(field(passenger, 'ZipCode'))}</span></td>
+      <td>${cell(field(passenger, 'City'))}/${cell(field(passenger, 'State'))}</td>
+      <td>${field(passenger, 'Active') ? 'Sim' : 'Nao'}</td>
     </tr>
   `).join('');
 }
