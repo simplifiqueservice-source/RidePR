@@ -83,6 +83,7 @@ else
 }
 
 builder.Services.AddScoped<ITripRepository, TripRepository>();
+builder.Services.AddScoped<IAdminPanelRepository, AdminPanelRepository>();
 builder.Services.AddScoped<IDriverLocationRepository, DriverLocationRepository>();
 builder.Services.AddScoped<IFareSettingsRepository, FareSettingsRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -98,6 +99,7 @@ builder.Services.AddScoped<IDispatchQueue, RedisDispatchQueue>();
 builder.Services.AddScoped<IDispatchNotifier, SignalRDispatchNotifier>();
 
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<AdminPanelService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<DriverService>();
 builder.Services.AddScoped<VehicleService>();
