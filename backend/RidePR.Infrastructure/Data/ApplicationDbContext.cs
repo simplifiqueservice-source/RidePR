@@ -115,6 +115,49 @@ public class ApplicationDbContext : DbContext
                 .HasConversion<int>();
         });
 
+        modelBuilder.Entity<Vehicle>(entity =>
+        {
+            entity.ToTable("Vehicles");
+
+            entity.HasKey(x => x.Id);
+
+            entity.HasIndex(x => x.DriverId);
+
+            entity.HasIndex(x => x.Plate)
+                .IsUnique();
+
+            entity.Property(x => x.Plate)
+                .HasMaxLength(10)
+                .IsRequired();
+
+            entity.Property(x => x.Model)
+                .HasMaxLength(100)
+                .IsRequired();
+
+            entity.Property(x => x.Brand)
+                .HasMaxLength(100)
+                .IsRequired();
+
+            entity.Property(x => x.Color)
+                .HasMaxLength(50);
+
+            entity.Property(x => x.Renavam)
+                .HasMaxLength(20);
+
+            entity.Property(x => x.Chassis)
+                .HasMaxLength(30);
+
+            entity.Property(x => x.PhotoUrl)
+                .HasMaxLength(500);
+
+            entity.Property(x => x.RegistrationDocumentUrl)
+                .HasMaxLength(500);
+
+            entity.HasOne(x => x.Driver)
+                .WithMany(x => x.Vehicles)
+                .HasForeignKey(x => x.DriverId);
+        });
+
         modelBuilder.Entity<DriverLocation>(entity =>
         {
             entity.Property(x => x.Position)

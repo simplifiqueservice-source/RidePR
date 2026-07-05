@@ -48,6 +48,8 @@ public class Driver
 
     public string? CnhBackUrl { get; set; }
 
+    public ICollection<Vehicle> Vehicles { get; set; } = new List<Vehicle>();
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }

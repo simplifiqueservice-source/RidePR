@@ -59,11 +59,13 @@ builder.Services.AddScoped<IDriverLocationRepository, DriverLocationRepository>(
 builder.Services.AddScoped<IFareSettingsRepository, FareSettingsRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IDriverRepository, DriverRepository>();
+builder.Services.AddScoped<IVehicleRepository, VehicleRepository>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<DriverService>();
+builder.Services.AddScoped<VehicleService>();
 builder.Services.AddScoped<DriverLocationService>();
 builder.Services.AddScoped<DispatchService>();
 builder.Services.AddScoped<TripService>();
