@@ -8,10 +8,14 @@ namespace RidePR.Application.Services;
 public class TripService
 {
     private readonly ITripRepository _repo;
+    private readonly RouteService _routeService;
 
-    public TripService(ITripRepository repo)
+    public TripService(
+        ITripRepository repo,
+        RouteService routeService)
     {
         _repo = repo;
+        _routeService = routeService;
     }
 
     // =========================
@@ -19,15 +23,29 @@ public class TripService
     // =========================
     public async Task<Trip> CreateAsync(CreateTripDto dto)
     {
+        var route = await _routeService.GetRouteAsync(
+            dto.OriginLatitude,
+            dto.OriginLongitude,
+            dto.DestinationLatitude,
+            dto.DestinationLongitude);
+
         var trip = new Trip
         {
             Id = Guid.NewGuid(),
             PassengerId = dto.PassengerId,
             Origin = dto.Origin,
             Destination = dto.Destination,
+            OriginLatitude = dto.OriginLatitude,
+            OriginLongitude = dto.OriginLongitude,
+            DestinationLatitude = dto.DestinationLatitude,
+            DestinationLongitude = dto.DestinationLongitude,
+            EstimatedDistanceKm = route?.DistanceKm ?? 0,
+            EstimatedDurationMinutes = route?.DurationMinutes ?? 0,
             Status = TripStatus.Requested,
             CreatedAt = DateTime.UtcNow,
-            Price = 0,
+            Price = route == null
+                ? 0
+                : CalculateByKmPricing((double)route.DistanceKm),
             DriverId = null
         };
 
