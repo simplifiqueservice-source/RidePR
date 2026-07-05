@@ -52,6 +52,14 @@ public class PassengerRepository : IPassengerRepository
             .FirstOrDefaultAsync(x => x.UserId == userId);
     }
 
+    public async Task<List<PassengerHistory>> GetHistoryAsync(Guid passengerId)
+    {
+        return await _context.Set<PassengerHistory>()
+            .Where(x => x.PassengerId == passengerId)
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync();
+    }
+
     public async Task<bool> CpfExistsAsync(string cpf, Guid? ignorePassengerId = null)
     {
         var normalizedCpf = cpf.Trim();
@@ -66,6 +74,11 @@ public class PassengerRepository : IPassengerRepository
     public async Task AddAsync(Passenger passenger)
     {
         await _context.Passengers.AddAsync(passenger);
+    }
+
+    public async Task AddHistoryAsync(PassengerHistory history)
+    {
+        await _context.Set<PassengerHistory>().AddAsync(history);
     }
 
     public Task UpdateAsync(Passenger passenger)

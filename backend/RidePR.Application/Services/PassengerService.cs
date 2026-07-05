@@ -99,6 +99,10 @@ public class PassengerService
         };
 
         await _passengerRepository.AddAsync(passenger);
+        await _passengerRepository.AddHistoryAsync(CreateHistory(
+            passenger.Id,
+            PassengerHistoryType.Created,
+            "Cadastro de passageiro criado."));
         await _passengerRepository.SaveChangesAsync();
 
         return Result<PassengerResponseDto>.Ok(ToResponse(passenger));
@@ -117,10 +121,16 @@ public class PassengerService
         passenger.City = dto.City.Trim();
         passenger.State = dto.State.Trim().ToUpperInvariant();
         passenger.ZipCode = dto.ZipCode.Trim();
+        var wasActive = passenger.Active;
+
         passenger.Active = dto.Active;
         passenger.UpdatedAt = DateTime.UtcNow;
 
         await _passengerRepository.UpdateAsync(passenger);
+        await _passengerRepository.AddHistoryAsync(CreateHistory(
+            passenger.Id,
+            ResolveUpdateHistoryType(wasActive, passenger.Active),
+            "Cadastro de passageiro atualizado."));
         await _passengerRepository.SaveChangesAsync();
 
         return Result<PassengerResponseDto>.Ok(ToResponse(passenger));
@@ -137,9 +147,26 @@ public class PassengerService
         passenger.UpdatedAt = DateTime.UtcNow;
 
         await _passengerRepository.UpdateAsync(passenger);
+        await _passengerRepository.AddHistoryAsync(CreateHistory(
+            passenger.Id,
+            PassengerHistoryType.Deactivated,
+            "Passageiro desativado por soft delete."));
         await _passengerRepository.SaveChangesAsync();
 
         return Result.Ok("Passageiro desativado com sucesso.");
+    }
+
+    public async Task<Result<IReadOnlyList<PassengerHistoryResponseDto>>> GetHistoryAsync(Guid id)
+    {
+        var passenger = await _passengerRepository.GetByIdAsync(id);
+
+        if (passenger == null)
+            return Result<IReadOnlyList<PassengerHistoryResponseDto>>.Fail("Passageiro nao encontrado.");
+
+        var history = await _passengerRepository.GetHistoryAsync(id);
+
+        return Result<IReadOnlyList<PassengerHistoryResponseDto>>.Ok(
+            history.Select(ToHistoryResponse).ToList());
     }
 
     private static PassengerResponseDto ToResponse(Passenger passenger)
@@ -169,5 +196,43 @@ public class PassengerService
         return value.Kind == DateTimeKind.Utc
             ? value
             : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    }
+
+    private static PassengerHistory CreateHistory(
+        Guid passengerId,
+        PassengerHistoryType type,
+        string description)
+    {
+        return new PassengerHistory
+        {
+            Id = Guid.NewGuid(),
+            PassengerId = passengerId,
+            Type = type,
+            Description = description,
+            CreatedAt = DateTime.UtcNow
+        };
+    }
+
+    private static PassengerHistoryType ResolveUpdateHistoryType(bool wasActive, bool isActive)
+    {
+        if (!wasActive && isActive)
+            return PassengerHistoryType.Reactivated;
+
+        if (wasActive && !isActive)
+            return PassengerHistoryType.Deactivated;
+
+        return PassengerHistoryType.Updated;
+    }
+
+    private static PassengerHistoryResponseDto ToHistoryResponse(PassengerHistory history)
+    {
+        return new PassengerHistoryResponseDto
+        {
+            Id = history.Id,
+            PassengerId = history.PassengerId,
+            Type = history.Type.ToString(),
+            Description = history.Description,
+            CreatedAt = history.CreatedAt
+        };
     }
 }

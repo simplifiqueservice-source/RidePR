@@ -14,6 +14,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Driver> Drivers => Set<Driver>();
     public DbSet<Passenger> Passengers => Set<Passenger>();
+    public DbSet<PassengerHistory> PassengerHistory => Set<PassengerHistory>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<Ride> Rides => Set<Ride>();
     public DbSet<Trip> Trips => Set<Trip>();
@@ -200,6 +201,26 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(x => x.ZipCode)
                 .HasMaxLength(10);
+        });
+
+        modelBuilder.Entity<PassengerHistory>(entity =>
+        {
+            entity.ToTable("PassengerHistory");
+
+            entity.HasKey(x => x.Id);
+
+            entity.HasIndex(x => x.PassengerId);
+
+            entity.Property(x => x.Type)
+                .HasConversion<int>();
+
+            entity.Property(x => x.Description)
+                .HasMaxLength(500)
+                .IsRequired();
+
+            entity.HasOne(x => x.Passenger)
+                .WithMany(x => x.History)
+                .HasForeignKey(x => x.PassengerId);
         });
 
         modelBuilder.Entity<DriverLocation>(entity =>

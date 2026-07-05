@@ -18,9 +18,13 @@ public interface IPassengerRepository
 
     Task<Passenger?> GetByUserIdAsync(Guid userId);
 
+    Task<List<PassengerHistory>> GetHistoryAsync(Guid passengerId);
+
     Task<bool> CpfExistsAsync(string cpf, Guid? ignorePassengerId = null);
 
     Task AddAsync(Passenger passenger);
+
+    Task AddHistoryAsync(PassengerHistory history);
 
     Task UpdateAsync(Passenger passenger);
 

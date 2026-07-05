@@ -60,6 +60,21 @@ public class PassengersController : ControllerBase
     }
 
     /// <summary>
+    /// Lista o historico operacional de um passageiro.
+    /// </summary>
+    [Authorize(Roles = "Administrator,Passenger")]
+    [HttpGet("{id:guid}/history")]
+    public async Task<IActionResult> GetHistory(Guid id)
+    {
+        var result = await _passengerService.GetHistoryAsync(id);
+
+        if (!result.Success)
+            return NotFound(result.Message);
+
+        return Ok(result.Data);
+    }
+
+    /// <summary>
     /// Cria um cadastro de passageiro vinculado a um usuario Passenger.
     /// </summary>
     [Authorize(Roles = "Administrator,Passenger")]

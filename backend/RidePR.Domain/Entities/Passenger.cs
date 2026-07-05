@@ -29,4 +29,6 @@ public class Passenger
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? UpdatedAt { get; set; }
+
+    public ICollection<PassengerHistory> History { get; set; } = new List<PassengerHistory>();
 }
