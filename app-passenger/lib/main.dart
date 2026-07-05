@@ -116,7 +116,7 @@ class MvpTestHome extends StatefulWidget {
 
 class _MvpTestHomeState extends State<MvpTestHome> {
   final baseUrlController =
-      TextEditingController(text: 'http://192.168.0.10:5000');
+      TextEditingController(text: 'http://192.168.0.10:5090');
   final emailController =
       TextEditingController(text: 'passageiro.mvp@ridepr.test');
   final passwordController = TextEditingController(text: 'Senha123!');
