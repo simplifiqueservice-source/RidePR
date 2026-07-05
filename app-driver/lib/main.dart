@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 
+const defaultApiBaseUrl = 'http://45.185.199.173:8282';
+
 void main() {
   runApp(const RidePrDriverApp());
 }
@@ -13,7 +15,7 @@ void main() {
 class AppConfig {
   static const apiBaseUrl = String.fromEnvironment(
     'RIDEPR_API_URL',
-    defaultValue: 'http://192.168.1.15:5090',
+    defaultValue: defaultApiBaseUrl,
   );
 }
 
@@ -251,11 +253,11 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'App do motorista MVP',
+                  'Entre para receber corridas',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 28),
-                _Input(controller: baseUrl, label: 'API baseUrl'),
+                _Input(controller: baseUrl, label: 'Endereco da API'),
                 _Input(controller: email, label: 'E-mail'),
                 _Input(
                   controller: password,
@@ -465,14 +467,15 @@ class _DriverHomePageState extends State<DriverHomePage> {
                     chassis: vehicleChassis,
                     active: _boolValue(vehicle, 'active', fallback: true),
                     onSave: driver == null ? null : _saveVehicle,
-                    onToggleActive: vehicle == null ? null : _toggleVehicleActive,
+                    onToggleActive:
+                        vehicle == null ? null : _toggleVehicleActive,
                   ),
                   const SizedBox(height: 16),
                   _AvailabilityCard(
                     selectedStatus: selectedStatus,
-                    onChanged: (value) =>
-                        setState(() => selectedStatus = value ?? 2),
-                    onUpdate: _updateStatus,
+                    liveStatus: liveStatus,
+                    streaming: locationStreaming,
+                    onToggle: _toggleAvailability,
                   ),
                   const SizedBox(height: 16),
                   _OfferCard(
@@ -700,7 +703,8 @@ class _DriverHomePageState extends State<DriverHomePage> {
   }
 
   void _applyTripEvent(String eventName, Map<String, dynamic> trip) {
-    final tripDriverId = '${trip['driverId'] ?? trip['DriverId']}'.toLowerCase();
+    final tripDriverId =
+        '${trip['driverId'] ?? trip['DriverId']}'.toLowerCase();
     final status = _tripStatusLabel(trip['status'] ?? trip['Status']);
 
     setState(() {
@@ -736,19 +740,32 @@ class _DriverHomePageState extends State<DriverHomePage> {
       ) as Map<String, dynamic>;
       setState(() {
         driver = data;
-        lastEvent = 'Status atualizado para ${_driverStatusLabel(data['status'])}.';
+        lastEvent =
+            'Status atualizado para ${_driverStatusLabel(data['status'])}.';
       });
+      if (selectedStatus == 2 && !locationStreaming) {
+        _toggleLocationStream();
+      }
+      if (selectedStatus != 2 && locationStreaming) {
+        _toggleLocationStream();
+      }
       await _loadTrips();
     } catch (ex) {
       setState(() => lastEvent = ex.toString());
     }
   }
 
+  Future<void> _toggleAvailability() async {
+    setState(() => selectedStatus = selectedStatus == 2 ? 1 : 2);
+    await _updateStatus();
+  }
+
   Future<void> _saveDriver() async {
     final userId = widget.session.userId;
 
     if (userId == null) {
-      setState(() => lastEvent = 'Faca login novamente para cadastrar motorista.');
+      setState(
+          () => lastEvent = 'Faca login novamente para cadastrar motorista.');
       return;
     }
 
@@ -821,7 +838,8 @@ class _DriverHomePageState extends State<DriverHomePage> {
     try {
       final data = vehicle == null
           ? await widget.session.api.post('/api/vehicles', body)
-          : await widget.session.api.put('/api/vehicles/${_id(vehicle!)}', body);
+          : await widget.session.api
+              .put('/api/vehicles/${_id(vehicle!)}', body);
 
       setState(() {
         vehicle = Map<String, dynamic>.from(data as Map);
@@ -1232,7 +1250,8 @@ class _DriverRegistrationCard extends StatelessWidget {
             children: [
               Expanded(child: _Input(controller: cnhNumber, label: 'CNH')),
               const SizedBox(width: 12),
-              Expanded(child: _Input(controller: cnhCategory, label: 'Categoria')),
+              Expanded(
+                  child: _Input(controller: cnhCategory, label: 'Categoria')),
             ],
           ),
           _Input(
@@ -1245,7 +1264,8 @@ class _DriverRegistrationCard extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onSave,
                   icon: const Icon(Icons.save),
-                  label: Text(hasDriver ? 'Salvar motorista' : 'Cadastrar motorista'),
+                  label: Text(
+                      hasDriver ? 'Salvar motorista' : 'Cadastrar motorista'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1328,7 +1348,8 @@ class _VehicleRegistrationCard extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onSave,
                   icon: const Icon(Icons.save),
-                  label: Text(hasVehicle ? 'Salvar veiculo' : 'Cadastrar veiculo'),
+                  label:
+                      Text(hasVehicle ? 'Salvar veiculo' : 'Cadastrar veiculo'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1350,40 +1371,39 @@ class _VehicleRegistrationCard extends StatelessWidget {
 class _AvailabilityCard extends StatelessWidget {
   const _AvailabilityCard({
     required this.selectedStatus,
-    required this.onChanged,
-    required this.onUpdate,
+    required this.liveStatus,
+    required this.streaming,
+    required this.onToggle,
   });
 
   final int selectedStatus;
-  final ValueChanged<int?> onChanged;
-  final VoidCallback onUpdate;
+  final String liveStatus;
+  final bool streaming;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
       title: 'Disponibilidade',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DropdownButtonFormField<int>(
-            initialValue: selectedStatus,
-            decoration: const InputDecoration(labelText: 'Status'),
-            items: const [
-              DropdownMenuItem(value: 1, child: Text('Offline')),
-              DropdownMenuItem(value: 2, child: Text('Online')),
-              DropdownMenuItem(value: 3, child: Text('Ocupado')),
-              DropdownMenuItem(value: 4, child: Text('Pausado')),
-            ],
-            onChanged: onChanged,
+          Text(
+            selectedStatus == 2 ? 'Voce esta online.' : 'Voce esta offline.',
+            style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: onUpdate,
-              icon: const Icon(Icons.power_settings_new),
-              label: const Text('Atualizar status'),
-            ),
+          FilledButton.icon(
+            onPressed: onToggle,
+            icon: Icon(
+                selectedStatus == 2 ? Icons.pause_circle : Icons.play_circle),
+            label: Text(selectedStatus == 2 ? 'Ficar offline' : 'Ficar online'),
           ),
+          const SizedBox(height: 8),
+          Text(streaming
+              ? 'Localizacao automatica ligada.'
+              : 'Localizacao automatica parada.'),
+          Text(liveStatus),
         ],
       ),
     );
@@ -1404,16 +1424,20 @@ class _OfferCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
-      title: 'Oferta em tempo real',
+      title: offer == null ? 'Corrida recebida' : 'Nova corrida recebida',
       child: offer == null
           ? const Text('Nenhuma oferta recebida.')
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Origem: ${offer!['origin'] ?? offer!['Origin']}'),
-                Text('Destino: ${offer!['destination'] ?? offer!['Destination']}'),
+                Text(
+                  'Origem: ${offer!['origin'] ?? offer!['Origin']}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Text(
+                    'Destino: ${offer!['destination'] ?? offer!['Destination']}'),
                 Text('Distancia ate origem: ${offer!['distanceKm']} km'),
-                Text('ETA: ${offer!['etaMinutes']} min'),
+                Text('Tempo estimado: ${offer!['etaMinutes']} min'),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -1421,7 +1445,7 @@ class _OfferCard extends StatelessWidget {
                       child: FilledButton.icon(
                         onPressed: onAccept,
                         icon: const Icon(Icons.check),
-                        label: const Text('Aceitar'),
+                        label: const Text('Aceitar corrida'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1462,7 +1486,7 @@ class _ActiveTripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
-      title: 'Corrida atual',
+      title: 'Corrida em andamento',
       child: trip == null
           ? const Text('Nenhuma corrida aceita ou em andamento.')
           : Column(
@@ -1470,7 +1494,8 @@ class _ActiveTripCard extends StatelessWidget {
               children: [
                 Text('ID: ${trip!['id'] ?? trip!['Id']}'),
                 Text('Origem: ${trip!['origin'] ?? trip!['Origin']}'),
-                Text('Destino: ${trip!['destination'] ?? trip!['Destination']}'),
+                Text(
+                    'Destino: ${trip!['destination'] ?? trip!['Destination']}'),
                 Text(
                   'Status: ${_DriverHomePageState._tripStatusText(trip!['status'] ?? trip!['Status'])}',
                 ),
@@ -1498,7 +1523,7 @@ class _ActiveTripCard extends StatelessWidget {
                       child: FilledButton.icon(
                         onPressed: canStart ? onStart : null,
                         icon: const Icon(Icons.play_arrow),
-                        label: const Text('Iniciar'),
+                        label: const Text('Iniciar corrida'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1506,7 +1531,7 @@ class _ActiveTripCard extends StatelessWidget {
                       child: FilledButton.icon(
                         onPressed: canFinish ? onFinish : null,
                         icon: const Icon(Icons.flag),
-                        label: const Text('Finalizar'),
+                        label: const Text('Finalizar corrida'),
                       ),
                     ),
                   ],
@@ -1538,7 +1563,8 @@ class _AvailableTripsCard extends StatelessWidget {
                     (trip) => ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text('${trip['origin'] ?? trip['Origin']}'),
-                      subtitle: Text('${trip['destination'] ?? trip['Destination']}'),
+                      subtitle:
+                          Text('${trip['destination'] ?? trip['Destination']}'),
                       trailing: FilledButton(
                         onPressed: () => onAccept(trip),
                         child: const Text('Aceitar'),
@@ -1573,14 +1599,21 @@ class _LocationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
-      title: 'Localizacao em tempo real',
+      title: 'Localizacao',
       child: Column(
         children: [
+          Text(
+            streaming
+                ? 'Enviando localizacao automaticamente.'
+                : 'Ao ficar online, o app envia a localizacao automaticamente.',
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(child: _Input(controller: latitude, label: 'Latitude')),
               const SizedBox(width: 12),
-              Expanded(child: _Input(controller: longitude, label: 'Longitude')),
+              Expanded(
+                  child: _Input(controller: longitude, label: 'Longitude')),
             ],
           ),
           Row(
@@ -1596,7 +1629,7 @@ class _LocationCard extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onSend,
                   icon: const Icon(Icons.my_location),
-                  label: const Text('Enviar agora'),
+                  label: const Text('Enviar localizacao'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1604,7 +1637,8 @@ class _LocationCard extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: onToggleStream,
                   icon: Icon(streaming ? Icons.pause : Icons.play_arrow),
-                  label: Text(streaming ? 'Parar envio' : 'Enviar a cada 5s'),
+                  label:
+                      Text(streaming ? 'Parar automatico' : 'Ligar automatico'),
                 ),
               ),
             ],
@@ -1683,27 +1717,33 @@ class _DebugCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SectionCard(
-      title: 'Debug realtime',
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xff101828),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: SizedBox(
-          width: double.infinity,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(12),
-            scrollDirection: Axis.horizontal,
-            child: SelectableText(
-              text,
-              style: const TextStyle(
-                color: Colors.white,
-                fontFamily: 'monospace',
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.bug_report),
+        title: const Text('Debug'),
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: const Color(0xff101828),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(12),
+                scrollDirection: Axis.horizontal,
+                child: SelectableText(
+                  text,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'monospace',
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }

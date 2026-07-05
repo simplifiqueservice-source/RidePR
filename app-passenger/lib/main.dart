@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 
+const defaultApiBaseUrl = 'http://45.185.199.173:8282';
+
 void main() {
   runApp(const RidePrMvpTestApp());
 }
@@ -16,7 +18,7 @@ class RidePrMvpTestApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'RidePR MVP Test',
+      title: 'RidePR Passageiro',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff2563eb)),
@@ -137,14 +139,14 @@ class MvpTestHome extends StatefulWidget {
 }
 
 class _MvpTestHomeState extends State<MvpTestHome> {
-  final baseUrlController =
-      TextEditingController(text: 'http://192.168.1.15:5090');
+  final baseUrlController = TextEditingController(text: defaultApiBaseUrl);
   final emailController =
       TextEditingController(text: 'passageiro.mvp@ridepr.test');
   final passwordController = TextEditingController(text: 'Senha123!');
   final passengerIdController = TextEditingController();
   final passengerCpfController = TextEditingController(text: '11122233344');
-  final passengerBirthDateController = TextEditingController(text: '1990-01-01');
+  final passengerBirthDateController =
+      TextEditingController(text: '1990-01-01');
   final passengerPhoneController = TextEditingController(text: '11999990000');
   final passengerEmergencyPhoneController =
       TextEditingController(text: '11999990001');
@@ -172,6 +174,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   HubConnection? hubConnection;
   int tabIndex = 0;
   bool loading = false;
+  bool debugVisible = false;
   String? accessToken;
   String liveStatus = 'SignalR desconectado.';
   String tripStatus = 'Sem corrida.';
@@ -234,8 +237,13 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('RidePR MVP Test Client'),
+        title: const Text('RidePR Passageiro'),
         actions: [
+          TextButton.icon(
+            onPressed: () => setState(() => debugVisible = !debugVisible),
+            icon: const Icon(Icons.bug_report),
+            label: const Text('Debug'),
+          ),
           IconButton(
             tooltip: 'Limpar token',
             onPressed: _clearSession,
@@ -318,7 +326,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
           NavigationDestination(icon: Icon(Icons.tune), label: 'Testes'),
         ],
       ),
-      bottomSheet: _ResponsePanel(response: lastResponse),
+      bottomSheet: debugVisible ? _ResponsePanel(response: lastResponse) : null,
     );
   }
 
@@ -343,6 +351,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
         userId = loggedUserId;
         await _loadPassenger();
         await _connectRealtime();
+        tabIndex = 1;
       }
 
       return result;
@@ -371,6 +380,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       if (result.success && trip != null && tripId != null) {
         tripIdController.text = tripId;
         _applyTrip(trip, eventName: 'TripRequested');
+        tabIndex = 2;
       }
 
       return result;
@@ -398,7 +408,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       _requireLoggedIn();
 
       if (userId == null || userId!.isEmpty) {
-        throw LocalValidationException('Faca login novamente para salvar o passageiro.');
+        throw LocalValidationException(
+            'Faca login novamente para salvar o passageiro.');
       }
 
       final body = {
@@ -479,7 +490,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     await _run(() async {
       _requireLoggedIn();
       _requireTripId();
-      final result = await api.get('/api/trips/${tripIdController.text.trim()}');
+      final result =
+          await api.get('/api/trips/${tripIdController.text.trim()}');
 
       if (result.success && result.body is Map<String, dynamic>) {
         _applyTrip(result.body as Map<String, dynamic>, eventName: 'Status');
@@ -562,8 +574,25 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       final result = await action();
 
       setState(() => lastResponse = result.pretty());
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.success
+                  ? 'Tudo certo. Operacao concluida.'
+                  : 'Nao foi possivel concluir. Veja o Debug.',
+            ),
+          ),
+        );
+      }
     } catch (error) {
       setState(() => lastResponse = 'Erro local\n$error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_friendlyError('$error'))),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => loading = false);
@@ -607,6 +636,20 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     });
   }
 
+  static String _friendlyError(String message) {
+    if (message.contains('SocketException') ||
+        message.contains('Connection refused') ||
+        message.contains('Failed host lookup')) {
+      return 'Nao consegui conectar na API. Confira internet, IP e porta.';
+    }
+
+    if (message.contains('401') || message.contains('Unauthorized')) {
+      return 'Sessao expirada ou login invalido. Entre novamente.';
+    }
+
+    return message.replaceFirst('Exception: ', '');
+  }
+
   static Object? _field(Map<String, dynamic> source, String name) {
     final pascal = name.substring(0, 1).toUpperCase() + name.substring(1);
     return source[name] ?? source[pascal];
@@ -646,7 +689,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   void _requirePassenger() {
     if (passengerIdController.text.trim().isEmpty) {
-      throw LocalValidationException('Salve o cadastro do passageiro antes de criar corrida.');
+      throw LocalValidationException(
+          'Salve o cadastro do passageiro antes de criar corrida.');
     }
   }
 
@@ -732,7 +776,7 @@ class _LoginScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ScreenFrame(
-      title: 'Login',
+      title: 'Entrar no RidePR',
       children: [
         _Input(controller: baseUrlController, label: 'Base URL da API'),
         _Input(controller: emailController, label: 'E-mail'),
@@ -746,8 +790,13 @@ class _LoginScreen extends StatelessWidget {
           icon: const Icon(Icons.login),
           label: Text(loggedIn ? 'Login OK - entrar novamente' : 'Entrar'),
         ),
-        Text(loggedIn ? 'Token salvo em memoria.' : 'Informe o IP/porta.'),
-        Text(liveStatus),
+        _StatusPill(
+          text: loggedIn
+              ? 'Conectado. Voce ja pode pedir corrida.'
+              : 'Entre para pedir uma corrida.',
+          icon: loggedIn ? Icons.check_circle : Icons.info,
+        ),
+        _StatusPill(text: liveStatus, icon: Icons.wifi_tethering),
       ],
     );
   }
@@ -803,72 +852,91 @@ class _CreateTripScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ScreenFrame(
-      title: 'Solicitar corrida',
+      title: 'Pedir corrida',
       children: [
         Text(passengerLoaded
-            ? 'Passageiro vinculado ao usuario logado.'
-            : 'Complete o cadastro do passageiro.'),
-        _Input(controller: passengerIdController, label: 'PassengerId'),
-        _Input(controller: passengerCpfController, label: 'CPF'),
-        _Input(
-          controller: passengerBirthDateController,
-          label: 'Nascimento (AAAA-MM-DD)',
-        ),
-        _Input(controller: passengerPhoneController, label: 'Telefone'),
-        _Input(
-          controller: passengerEmergencyPhoneController,
-          label: 'Telefone emergencia',
-        ),
-        _Input(controller: passengerAddressController, label: 'Endereco'),
-        Row(
+            ? 'Cadastro pronto. Confira origem e destino.'
+            : 'Complete seu cadastro uma vez para pedir corrida.'),
+        ExpansionTile(
+          title: const Text('Meu cadastro'),
+          initiallyExpanded: !passengerLoaded,
           children: [
-            Expanded(child: _Input(controller: passengerCityController, label: 'Cidade')),
-            const SizedBox(width: 8),
-            Expanded(child: _Input(controller: passengerStateController, label: 'UF')),
-            const SizedBox(width: 8),
-            Expanded(child: _Input(controller: passengerZipCodeController, label: 'CEP')),
+            _Input(controller: passengerIdController, label: 'PassengerId'),
+            _Input(controller: passengerCpfController, label: 'CPF'),
+            _Input(
+              controller: passengerBirthDateController,
+              label: 'Nascimento (AAAA-MM-DD)',
+            ),
+            _Input(controller: passengerPhoneController, label: 'Telefone'),
+            _Input(
+              controller: passengerEmergencyPhoneController,
+              label: 'Telefone emergencia',
+            ),
+            _Input(controller: passengerAddressController, label: 'Endereco'),
+            Row(
+              children: [
+                Expanded(
+                    child: _Input(
+                        controller: passengerCityController, label: 'Cidade')),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: _Input(
+                        controller: passengerStateController, label: 'UF')),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: _Input(
+                        controller: passengerZipCodeController, label: 'CEP')),
+              ],
+            ),
+            FilledButton.icon(
+              onPressed: loading || !canCreateTrip ? null : onSavePassenger,
+              icon: const Icon(Icons.person),
+              label: Text(passengerLoaded ? 'Salvar cadastro' : 'Cadastrar'),
+            ),
           ],
         ),
-        FilledButton.icon(
-          onPressed: loading || !canCreateTrip ? null : onSavePassenger,
-          icon: const Icon(Icons.person),
-          label: Text(passengerLoaded ? 'Salvar passageiro' : 'Cadastrar passageiro'),
-        ),
-        _Input(controller: tripIdController, label: 'TripId gerado/manual'),
+        _Input(controller: tripIdController, label: 'Codigo da corrida'),
         _Input(controller: originController, label: 'Origem'),
         _Input(controller: destinationController, label: 'Destino'),
-        Row(
+        ExpansionTile(
+          title: const Text('Coordenadas'),
           children: [
-            Expanded(
-              child: _Input(controller: originLatController, label: 'Lat origem'),
+            Row(
+              children: [
+                Expanded(
+                  child: _Input(
+                      controller: originLatController, label: 'Lat origem'),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _Input(
+                      controller: originLngController, label: 'Lng origem'),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _Input(controller: originLngController, label: 'Lng origem'),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            Expanded(
-              child: _Input(
-                controller: destinationLatController,
-                label: 'Lat destino',
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _Input(
-                controller: destinationLngController,
-                label: 'Lng destino',
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: _Input(
+                    controller: destinationLatController,
+                    label: 'Lat destino',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _Input(
+                    controller: destinationLngController,
+                    label: 'Lng destino',
+                  ),
+                ),
+              ],
             ),
           ],
         ),
         FilledButton.icon(
           onPressed: loading || !canCreateTrip ? null : onCreateTrip,
           icon: const Icon(Icons.local_taxi),
-          label: const Text('Criar corrida'),
+          label: const Text('Pedir corrida'),
         ),
       ],
     );
@@ -901,18 +969,15 @@ class _StatusScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ScreenFrame(
-      title: 'Acompanhar status',
+      title: 'Sua corrida',
       children: [
-        _Input(controller: tripIdController, label: 'TripId'),
-        FilledButton.icon(
-          onPressed: loading ? null : onRefresh,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Consultar corrida'),
+        Text(
+          tripStatus,
+          style: Theme.of(context).textTheme.titleLarge,
         ),
-        Text(tripStatus),
-        Text(liveStatus),
+        _StatusPill(text: liveStatus, icon: Icons.wifi_tethering),
         SizedBox(
-          height: 280,
+          height: 360,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: FlutterMap(
@@ -939,6 +1004,12 @@ class _StatusScreen extends StatelessWidget {
               ],
             ),
           ),
+        ),
+        _Input(controller: tripIdController, label: 'TripId'),
+        FilledButton.icon(
+          onPressed: loading ? null : onRefresh,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Consultar corrida'),
         ),
       ],
     );
@@ -1049,6 +1120,33 @@ class _ScreenFrame extends StatelessWidget {
         const SizedBox(height: 16),
         ...children.expand((child) => [child, const SizedBox(height: 12)]),
       ],
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.text, required this.icon});
+
+  final String text;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text)),
+          ],
+        ),
+      ),
     );
   }
 }
