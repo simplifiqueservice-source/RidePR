@@ -1,60 +1,82 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using RidePR.Application.DTOs;
-using RidePR.Domain.Entities;
-using RidePR.Infrastructure.Data;
+using RidePR.Application.Services;
 
 namespace RidePR.Api.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Administrator")]
 [Route("api/users")]
 public class UsersController : ControllerBase
 {
-    private readonly ApplicationDbContext _context;
+    private readonly UserService _userService;
 
-    public UsersController(ApplicationDbContext context)
+    public UsersController(UserService userService)
     {
-        _context = context;
+        _userService = userService;
     }
 
     [HttpGet]
-    public async Task<IActionResult> Get()
+    public async Task<IActionResult> Get([FromQuery] UserQueryDto query)
     {
-        var users = await _context.Users
-            .Select(x => new UserDto
-            {
-                Id = x.Id,
-                Name = x.Name,
-                Email = x.Email,
-                Active = x.Active,
-                CreatedAt = x.CreatedAt
-            })
-            .ToListAsync();
+        var result = await _userService.GetPagedAsync(query);
 
-        return Ok(users);
+        return Ok(result);
+    }
+
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetById(Guid id)
+    {
+        var result = await _userService.GetByIdAsync(id);
+
+        if (!result.Success)
+            return NotFound(result.Message);
+
+        return Ok(result.Data);
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(CreateUserDto dto)
+    public async Task<IActionResult> Create(RegisterDto dto)
     {
-        var user = new User
-        {
-            Name = dto.Name,
-            Email = dto.Email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password)
-        };
+        var result = await _userService.CreateAsync(dto);
 
-        _context.Users.Add(user);
+        if (!result.Success)
+            return BadRequest(result.Message);
 
-        await _context.SaveChangesAsync();
+        return Ok(result.Data);
+    }
 
-        return Ok(new UserDto
-        {
-            Id = user.Id,
-            Name = user.Name,
-            Email = user.Email,
-            Active = user.Active,
-            CreatedAt = user.CreatedAt
-        });
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, UpdateUserDto dto)
+    {
+        var result = await _userService.UpdateAsync(id, dto);
+
+        if (!result.Success)
+            return BadRequest(result.Message);
+
+        return Ok(result.Data);
+    }
+
+    [HttpPatch("{id:guid}/password")]
+    public async Task<IActionResult> ChangePassword(Guid id, ChangeUserPasswordDto dto)
+    {
+        var result = await _userService.ChangePasswordAsync(id, dto);
+
+        if (!result.Success)
+            return BadRequest(result.Message);
+
+        return Ok(result.Message);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var result = await _userService.DeactivateAsync(id);
+
+        if (!result.Success)
+            return NotFound(result.Message);
+
+        return Ok(result.Message);
     }
 }
