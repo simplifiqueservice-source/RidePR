@@ -30,6 +30,7 @@ packages/
 
 # Publish
 publish/
+RidePR.zip
 
 # Test Results
 TestResults/
