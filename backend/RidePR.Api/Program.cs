@@ -4,8 +4,16 @@ using RidePR.Application.Services;
 using RidePR.Infrastructure.Data;
 using RidePR.Infrastructure.Repositories;
 using RidePR.Api.Hubs;
+using RidePR.Api.Middleware;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .WriteTo.File("logs/ridepr-.log", rollingInterval: RollingInterval.Day)
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 // =====================
 // Controllers + Swagger
@@ -41,6 +49,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+app.UseMiddleware<ExceptionMiddleware>();
 
 // =====================
 // Middleware
