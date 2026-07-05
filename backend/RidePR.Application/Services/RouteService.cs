@@ -34,7 +34,8 @@ public class RouteService
         var result = await GetRouteAsync(new MapRouteRequestDto
         {
             Origin = new CoordinateDto { Latitude = originLat, Longitude = originLng },
-            Destination = new CoordinateDto { Latitude = destinationLat, Longitude = destinationLng }
+            Destination = new CoordinateDto { Latitude = destinationLat, Longitude = destinationLng },
+            GeometryFormat = _options.OpenStreetMap.RouteGeometryFormat
         });
 
         return result.Data;
@@ -42,6 +43,11 @@ public class RouteService
 
     public async Task<Result<RouteResultDto>> GetRouteAsync(MapRouteRequestDto request)
     {
+        var validation = ValidateRouteRequest(request);
+
+        if (!validation.Success)
+            return Result<RouteResultDto>.Fail(validation.Message);
+
         var provider = ResolveProvider(request.Provider);
         var cacheKey = CreateCacheKey("route", provider.Name, request);
         var cached = await _cache.GetAsync<RouteResultDto>(cacheKey);
@@ -61,6 +67,11 @@ public class RouteService
 
     public async Task<Result<DistanceMatrixResultDto>> GetDistanceMatrixAsync(DistanceMatrixRequestDto request)
     {
+        var validation = ValidateMatrixRequest(request);
+
+        if (!validation.Success)
+            return Result<DistanceMatrixResultDto>.Fail(validation.Message);
+
         var provider = ResolveProvider(request.Provider);
         var cacheKey = CreateCacheKey("matrix", provider.Name, request);
         var cached = await _cache.GetAsync<DistanceMatrixResultDto>(cacheKey);
@@ -100,6 +111,9 @@ public class RouteService
 
     public async Task<Result<GeocodingResultDto>> GeocodeAsync(GeocodingRequestDto request)
     {
+        if (string.IsNullOrWhiteSpace(request.Address))
+            return Result<GeocodingResultDto>.Fail("Endereco e obrigatorio.");
+
         var provider = ResolveProvider(request.Provider);
         var cacheKey = CreateCacheKey("geocode", provider.Name, request);
         var cached = await _cache.GetAsync<GeocodingResultDto>(cacheKey);
@@ -119,6 +133,9 @@ public class RouteService
 
     public async Task<Result<GeocodingResultDto>> ReverseGeocodeAsync(ReverseGeocodingRequestDto request)
     {
+        if (!IsValidCoordinate(request.Coordinate))
+            return Result<GeocodingResultDto>.Fail("Coordenada invalida.");
+
         var provider = ResolveProvider(request.Provider);
         var cacheKey = CreateCacheKey("reverse", provider.Name, request);
         var cached = await _cache.GetAsync<GeocodingResultDto>(cacheKey);
@@ -136,6 +153,19 @@ public class RouteService
         return Result<GeocodingResultDto>.Ok(result);
     }
 
+    public IReadOnlyList<MapProviderDto> GetProviders()
+    {
+        return _providers
+            .Select(x => new MapProviderDto
+            {
+                Name = x.Name,
+                Default = x.Name.Equals(_options.DefaultProvider, StringComparison.OrdinalIgnoreCase)
+            })
+            .OrderByDescending(x => x.Default)
+            .ThenBy(x => x.Name)
+            .ToList();
+    }
+
     private IMapProvider ResolveProvider(string? providerName)
     {
         var name = string.IsNullOrWhiteSpace(providerName)
@@ -143,7 +173,8 @@ public class RouteService
             : providerName;
 
         return _providers.FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-            ?? _providers.First(x => x.Name.Equals(_options.DefaultProvider, StringComparison.OrdinalIgnoreCase));
+            ?? _providers.FirstOrDefault(x => x.Name.Equals(_options.DefaultProvider, StringComparison.OrdinalIgnoreCase))
+            ?? _providers.First();
     }
 
     private TimeSpan GetCacheTtl()
@@ -157,5 +188,36 @@ public class RouteService
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
 
         return $"maps:{provider.ToLowerInvariant()}:{operation}:{hash}";
+    }
+
+    private static Result ValidateRouteRequest(MapRouteRequestDto request)
+    {
+        if (!IsValidCoordinate(request.Origin) || !IsValidCoordinate(request.Destination))
+            return Result.Fail("Coordenadas de origem ou destino invalidas.");
+
+        return Result.Ok();
+    }
+
+    private Result ValidateMatrixRequest(DistanceMatrixRequestDto request)
+    {
+        if (request.Origins.Count == 0 || request.Destinations.Count == 0)
+            return Result.Fail("Informe ao menos uma origem e um destino.");
+
+        var totalCoordinates = request.Origins.Count + request.Destinations.Count;
+        var maxCoordinates = _options.MaxMatrixCoordinates <= 0 ? 25 : _options.MaxMatrixCoordinates;
+
+        if (totalCoordinates > maxCoordinates)
+            return Result.Fail($"Matriz permite no maximo {maxCoordinates} coordenadas.");
+
+        if (request.Origins.Concat(request.Destinations).Any(x => !IsValidCoordinate(x)))
+            return Result.Fail("Matriz contem coordenadas invalidas.");
+
+        return Result.Ok();
+    }
+
+    private static bool IsValidCoordinate(CoordinateDto coordinate)
+    {
+        return coordinate.Latitude is >= -90 and <= 90 &&
+               coordinate.Longitude is >= -180 and <= 180;
     }
 }

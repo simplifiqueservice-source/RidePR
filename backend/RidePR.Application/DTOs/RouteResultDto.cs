@@ -10,5 +10,7 @@ public class RouteResultDto
 
     public string Geometry { get; set; } = string.Empty;
 
+    public string GeometryFormat { get; set; } = string.Empty;
+
     public string Provider { get; set; } = string.Empty;
 }

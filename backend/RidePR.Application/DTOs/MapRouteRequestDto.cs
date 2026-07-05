@@ -10,5 +10,7 @@ public class MapRouteRequestDto
     [Required]
     public CoordinateDto Destination { get; set; } = new();
 
+    public string? GeometryFormat { get; set; }
+
     public string? Provider { get; set; }
 }

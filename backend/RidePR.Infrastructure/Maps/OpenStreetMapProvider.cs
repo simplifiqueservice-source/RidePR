@@ -17,33 +17,41 @@ public class OpenStreetMapProvider : IMapProvider
     {
         _http = http;
         _options = options.Value.OpenStreetMap;
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("RidePR/1.0");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd(_options.UserAgent);
     }
 
     public string Name => "OpenStreetMap";
 
     public async Task<RouteResultDto?> GetRouteAsync(MapRouteRequestDto request)
     {
+        var geometryFormat = ResolveGeometryFormat(request.GeometryFormat);
         var url = $"{_options.OsrmBaseUrl}/route/v1/driving/" +
                   $"{Format(request.Origin.Longitude)},{Format(request.Origin.Latitude)};" +
                   $"{Format(request.Destination.Longitude)},{Format(request.Destination.Latitude)}" +
-                  "?overview=full&geometries=polyline";
+                  $"?overview=full&geometries={geometryFormat}&steps=false&alternatives=false";
 
         using var document = await GetJsonAsync(url);
         var root = document?.RootElement;
 
-        if (root == null || !root.Value.TryGetProperty("routes", out var routes) || routes.GetArrayLength() == 0)
+        if (root == null ||
+            !IsOk(root.Value) ||
+            !root.Value.TryGetProperty("routes", out var routes) ||
+            routes.GetArrayLength() == 0)
             return null;
 
         var route = routes[0];
         var duration = (decimal)route.GetProperty("duration").GetDouble() / 60m;
+        var geometry = route.GetProperty("geometry");
 
         return new RouteResultDto
         {
             DistanceKm = (decimal)route.GetProperty("distance").GetDouble() / 1000m,
             DurationMinutes = duration,
             EtaMinutes = duration,
-            Geometry = route.GetProperty("geometry").GetString() ?? "",
+            Geometry = geometry.ValueKind == JsonValueKind.String
+                ? geometry.GetString() ?? ""
+                : geometry.GetRawText(),
+            GeometryFormat = geometryFormat,
             Provider = Name
         };
     }
@@ -60,6 +68,7 @@ public class OpenStreetMapProvider : IMapProvider
         var root = document?.RootElement;
 
         if (root == null ||
+            !IsOk(root.Value) ||
             !root.Value.TryGetProperty("distances", out var distances) ||
             !root.Value.TryGetProperty("durations", out var durations))
             return null;
@@ -74,8 +83,12 @@ public class OpenStreetMapProvider : IMapProvider
                 {
                     OriginIndex = i,
                     DestinationIndex = j,
-                    DistanceKm = (decimal)distances[i][j].GetDouble() / 1000m,
-                    DurationMinutes = (decimal)durations[i][j].GetDouble() / 60m
+                    DistanceKm = ReadNullableDouble(distances[i][j]) is { } distance
+                        ? (decimal)distance / 1000m
+                        : 0,
+                    DurationMinutes = ReadNullableDouble(durations[i][j]) is { } duration
+                        ? (decimal)duration / 60m
+                        : 0
                 });
             }
         }
@@ -85,7 +98,7 @@ public class OpenStreetMapProvider : IMapProvider
 
     public async Task<GeocodingResultDto?> GeocodeAsync(GeocodingRequestDto request)
     {
-        var url = $"{_options.NominatimBaseUrl}/search?format=json&limit=1&q={HttpUtility.UrlEncode(request.Address)}";
+        var url = $"{_options.NominatimBaseUrl}/search?format=json&limit=1&addressdetails=1&accept-language={HttpUtility.UrlEncode(_options.AcceptLanguage)}&q={HttpUtility.UrlEncode(request.Address)}";
         using var document = await GetJsonAsync(url);
         var root = document?.RootElement;
 
@@ -105,7 +118,7 @@ public class OpenStreetMapProvider : IMapProvider
 
     public async Task<GeocodingResultDto?> ReverseGeocodeAsync(ReverseGeocodingRequestDto request)
     {
-        var url = $"{_options.NominatimBaseUrl}/reverse?format=json&lat={Format(request.Coordinate.Latitude)}&lon={Format(request.Coordinate.Longitude)}";
+        var url = $"{_options.NominatimBaseUrl}/reverse?format=json&addressdetails=1&accept-language={HttpUtility.UrlEncode(_options.AcceptLanguage)}&lat={Format(request.Coordinate.Latitude)}&lon={Format(request.Coordinate.Longitude)}";
         using var document = await GetJsonAsync(url);
         var root = document?.RootElement;
 
@@ -136,5 +149,29 @@ public class OpenStreetMapProvider : IMapProvider
     private static string Format(double value)
     {
         return value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private string ResolveGeometryFormat(string? requestedFormat)
+    {
+        var value = string.IsNullOrWhiteSpace(requestedFormat)
+            ? _options.RouteGeometryFormat
+            : requestedFormat;
+
+        return value.Equals("geojson", StringComparison.OrdinalIgnoreCase)
+            ? "geojson"
+            : "polyline";
+    }
+
+    private static bool IsOk(JsonElement root)
+    {
+        return !root.TryGetProperty("code", out var code) ||
+               code.GetString()?.Equals("Ok", StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    private static double? ReadNullableDouble(JsonElement element)
+    {
+        return element.ValueKind == JsonValueKind.Number
+            ? element.GetDouble()
+            : null;
     }
 }

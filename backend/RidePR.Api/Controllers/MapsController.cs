@@ -18,6 +18,15 @@ public class MapsController : ControllerBase
     }
 
     /// <summary>
+    /// Lista providers de mapas disponiveis e indica o provider padrao.
+    /// </summary>
+    [HttpGet("providers")]
+    public IActionResult Providers()
+    {
+        return Ok(_routeService.GetProviders());
+    }
+
+    /// <summary>
     /// Calcula uma rota entre origem e destino usando o provider configurado ou informado.
     /// </summary>
     [HttpPost("route")]

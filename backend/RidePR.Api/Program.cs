@@ -111,8 +111,25 @@ builder.Services.AddScoped<TripService>();
 builder.Services.AddScoped<FareCalculatorService>();
 builder.Services.AddHostedService<DispatchTimeoutWorker>();
 
-builder.Services.AddHttpClient<IMapProvider, OpenStreetMapProvider>();
-builder.Services.AddHttpClient<IMapProvider, GoogleMapsProvider>();
+builder.Services.AddHttpClient<IMapProvider, OpenStreetMapProvider>((serviceProvider, client) =>
+{
+    var options = serviceProvider
+        .GetRequiredService<Microsoft.Extensions.Options.IOptions<MapsOptions>>()
+        .Value
+        .OpenStreetMap;
+
+    client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds <= 0 ? 10 : options.TimeoutSeconds);
+});
+
+builder.Services.AddHttpClient<IMapProvider, GoogleMapsProvider>((serviceProvider, client) =>
+{
+    var options = serviceProvider
+        .GetRequiredService<Microsoft.Extensions.Options.IOptions<MapsOptions>>()
+        .Value
+        .Google;
+
+    client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds <= 0 ? 10 : options.TimeoutSeconds);
+});
 builder.Services.AddScoped<RouteService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>

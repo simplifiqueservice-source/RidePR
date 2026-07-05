@@ -43,6 +43,7 @@ public class GoogleMapsProvider : IMapProvider
             DurationMinutes = duration,
             EtaMinutes = duration,
             Geometry = route.GetProperty("overview_polyline").GetProperty("points").GetString() ?? "",
+            GeometryFormat = "polyline",
             Provider = Name
         };
     }
