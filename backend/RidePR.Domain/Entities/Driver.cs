@@ -1,15 +1,54 @@
+using RidePR.Domain.Enums;
+
 namespace RidePR.Domain.Entities;
 
 public class Driver
 {
     public Guid Id { get; set; }
 
-    public string Name { get; set; } = string.Empty;
-    public string Document { get; set; } = string.Empty;
+    public Guid UserId { get; set; }
 
-    public string Phone { get; set; } = string.Empty;
+    public User User { get; set; } = null!;
 
-    public bool Active { get; set; } = true;
+    public string Cpf { get; set; } = "";
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string Rg { get; set; } = "";
+
+    public DateTime BirthDate { get; set; }
+
+    public string Phone { get; set; } = "";
+
+    public string EmergencyPhone { get; set; } = "";
+
+    public string Address { get; set; } = "";
+
+    public string City { get; set; } = "";
+
+    public string State { get; set; } = "";
+
+    public string ZipCode { get; set; } = "";
+
+    public string CnhNumber { get; set; } = "";
+
+    public string CnhCategory { get; set; } = "";
+
+    public DateTime CnhExpiration { get; set; }
+
+    public DriverStatus Status { get; set; }
+
+    public DriverApprovalStatus ApprovalStatus { get; set; }
+
+    public string? RejectReason { get; set; }
+
+    public bool Active { get; set; }
+
+    public string? PhotoUrl { get; set; }
+
+    public string? CnhFrontUrl { get; set; }
+
+    public string? CnhBackUrl { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime? UpdatedAt { get; set; }
 }

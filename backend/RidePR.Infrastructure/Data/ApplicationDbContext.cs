@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using NetTopologySuite.Geometries;
 using RidePR.Domain.Entities;
 
 namespace RidePR.Infrastructure.Data;
@@ -25,15 +24,6 @@ public class ApplicationDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        modelBuilder.Entity<DriverLocation>(entity =>
-        {
-            entity.Property(x => x.Position)
-                .HasColumnType("geometry(Point,4326)");
-
-            entity.HasIndex(x => x.DriverId)
-                .IsUnique();
-        });
-
         modelBuilder.Entity<User>(entity =>
         {
             entity.ToTable("Users");
@@ -53,6 +43,85 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(x => x.PasswordHash)
                 .IsRequired();
+
+            entity.HasOne(x => x.Driver)
+                .WithOne(x => x.User)
+                .HasForeignKey<Driver>(x => x.UserId);
+        });
+
+        modelBuilder.Entity<Driver>(entity =>
+        {
+            entity.ToTable("Drivers");
+
+            entity.HasKey(x => x.Id);
+
+            entity.HasIndex(x => x.UserId)
+                .IsUnique();
+
+            entity.HasIndex(x => x.Cpf)
+                .IsUnique();
+
+            entity.Property(x => x.Cpf)
+                .HasMaxLength(14)
+                .IsRequired();
+
+            entity.Property(x => x.Rg)
+                .HasMaxLength(20);
+
+            entity.Property(x => x.Phone)
+                .HasMaxLength(20);
+
+            entity.Property(x => x.EmergencyPhone)
+                .HasMaxLength(20);
+
+            entity.Property(x => x.Address)
+                .HasMaxLength(300);
+
+            entity.Property(x => x.City)
+                .HasMaxLength(100);
+
+            entity.Property(x => x.State)
+                .HasMaxLength(2);
+
+            entity.Property(x => x.ZipCode)
+                .HasMaxLength(10);
+
+            entity.Property(x => x.CnhNumber)
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.HasIndex(x => x.CnhNumber)
+                .IsUnique();
+
+            entity.Property(x => x.CnhCategory)
+                .HasMaxLength(5);
+
+            entity.Property(x => x.RejectReason)
+                .HasMaxLength(500);
+
+            entity.Property(x => x.PhotoUrl)
+                .HasMaxLength(500);
+
+            entity.Property(x => x.CnhFrontUrl)
+                .HasMaxLength(500);
+
+            entity.Property(x => x.CnhBackUrl)
+                .HasMaxLength(500);
+
+            entity.Property(x => x.Status)
+                .HasConversion<int>();
+
+            entity.Property(x => x.ApprovalStatus)
+                .HasConversion<int>();
+        });
+
+        modelBuilder.Entity<DriverLocation>(entity =>
+        {
+            entity.Property(x => x.Position)
+                .HasColumnType("geometry(Point,4326)");
+
+            entity.HasIndex(x => x.DriverId)
+                .IsUnique();
         });
     }
 }

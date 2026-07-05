@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RidePR.Api.Hubs;
-using RidePR.Application.Services;
 using RidePR.Api.Middleware;
 using RidePR.Application.Interfaces;
 using RidePR.Application.Services;
@@ -59,10 +58,12 @@ builder.Services.AddScoped<ITripRepository, TripRepository>();
 builder.Services.AddScoped<IDriverLocationRepository, DriverLocationRepository>();
 builder.Services.AddScoped<IFareSettingsRepository, FareSettingsRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IDriverRepository, DriverRepository>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<DriverService>();
 builder.Services.AddScoped<DriverLocationService>();
 builder.Services.AddScoped<DispatchService>();
 builder.Services.AddScoped<TripService>();
@@ -112,6 +113,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();

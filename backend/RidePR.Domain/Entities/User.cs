@@ -12,6 +12,8 @@ public class User
 
     public string PasswordHash { get; set; } = string.Empty;
 
+    public Driver? Driver { get; set; }
+
     // Perfil do usuário
     public UserRole Role { get; set; } = UserRole.Passenger;
 
