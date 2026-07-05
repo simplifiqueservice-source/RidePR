@@ -24,6 +24,13 @@ public class TripRepository : ITripRepository
         return await _context.Trips.FirstOrDefaultAsync(x => x.Id == id);
     }
 
+    public async Task<List<Trip>> GetAllAsync()
+    {
+        return await _context.Trips
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync();
+    }
+
     public Task UpdateAsync(Trip trip)
     {
         _context.Trips.Update(trip);

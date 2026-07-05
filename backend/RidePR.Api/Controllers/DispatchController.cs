@@ -20,7 +20,7 @@ public class DispatchController : ControllerBase
     /// <summary>
     /// Busca motoristas disponiveis por raio com distancia e ETA ate a origem.
     /// </summary>
-    [Authorize(Roles = "Administrator")]
+    [Authorize(Roles = "Administrator,Passenger")]
     [HttpGet("nearby")]
     public async Task<IActionResult> NearbyDrivers([FromQuery] DispatchNearbyQueryDto query)
     {
@@ -36,6 +36,7 @@ public class DispatchController : ControllerBase
     /// Inicia a fila de despacho para uma corrida e envia oferta ao melhor motorista.
     /// </summary>
     [Authorize(Roles = "Administrator")]
+    [HttpPost("request")]
     [HttpPost("start")]
     public async Task<IActionResult> Start(DispatchRequestDto dto)
     {
@@ -66,8 +67,29 @@ public class DispatchController : ControllerBase
     /// Aceita a oferta atual de despacho.
     /// </summary>
     [Authorize(Roles = "Administrator,Driver")]
+    [HttpPost("accept")]
+    public async Task<IActionResult> Accept(DispatchDecisionRequestDto dto)
+    {
+        var result = await _dispatchService.AcceptAsync(
+            dto.TripId,
+            new DispatchDriverDecisionDto
+            {
+                DriverId = dto.DriverId,
+                Reason = dto.Reason
+            });
+
+        if (!result.Success)
+            return BadRequest(result.Message);
+
+        return Ok(result.Data);
+    }
+
+    /// <summary>
+    /// Aceita a oferta atual de despacho.
+    /// </summary>
+    [Authorize(Roles = "Administrator,Driver")]
     [HttpPost("{tripId:guid}/accept")]
-    public async Task<IActionResult> Accept(Guid tripId, DispatchDriverDecisionDto dto)
+    public async Task<IActionResult> AcceptByTripId(Guid tripId, DispatchDriverDecisionDto dto)
     {
         var result = await _dispatchService.AcceptAsync(tripId, dto);
 
@@ -81,8 +103,29 @@ public class DispatchController : ControllerBase
     /// Recusa a oferta atual e reatribui para o proximo motorista da fila.
     /// </summary>
     [Authorize(Roles = "Administrator,Driver")]
+    [HttpPost("reject")]
+    public async Task<IActionResult> Reject(DispatchDecisionRequestDto dto)
+    {
+        var result = await _dispatchService.RejectAsync(
+            dto.TripId,
+            new DispatchDriverDecisionDto
+            {
+                DriverId = dto.DriverId,
+                Reason = dto.Reason
+            });
+
+        if (!result.Success)
+            return BadRequest(result.Message);
+
+        return Ok(result.Data);
+    }
+
+    /// <summary>
+    /// Recusa a oferta atual e reatribui para o proximo motorista da fila.
+    /// </summary>
+    [Authorize(Roles = "Administrator,Driver")]
     [HttpPost("{tripId:guid}/reject")]
-    public async Task<IActionResult> Reject(Guid tripId, DispatchDriverDecisionDto dto)
+    public async Task<IActionResult> RejectByTripId(Guid tripId, DispatchDriverDecisionDto dto)
     {
         var result = await _dispatchService.RejectAsync(tripId, dto);
 

@@ -8,6 +8,8 @@ public interface ITripRepository
 
     Task<Trip?> GetByIdAsync(Guid id);
 
+    Task<List<Trip>> GetAllAsync();
+
     Task UpdateAsync(Trip trip);
 
     Task SaveChangesAsync();

@@ -9,13 +9,19 @@ public class TripService
 {
     private readonly ITripRepository _repo;
     private readonly RouteService _routeService;
+    private readonly FareCalculatorService _fareCalculator;
+    private readonly IDriverRepository _driverRepository;
 
     public TripService(
         ITripRepository repo,
-        RouteService routeService)
+        RouteService routeService,
+        FareCalculatorService fareCalculator,
+        IDriverRepository driverRepository)
     {
         _repo = repo;
         _routeService = routeService;
+        _fareCalculator = fareCalculator;
+        _driverRepository = driverRepository;
     }
 
     // =========================
@@ -45,7 +51,7 @@ public class TripService
             CreatedAt = DateTime.UtcNow,
             Price = route == null
                 ? 0
-                : CalculateByKmPricing((double)route.DistanceKm),
+                : await CalculateFareAsync(route.DistanceKm, route.DurationMinutes),
             DriverId = null
         };
 
@@ -53,6 +59,16 @@ public class TripService
         await _repo.SaveChangesAsync();
 
         return trip;
+    }
+
+    public async Task<Trip?> GetByIdAsync(Guid id)
+    {
+        return await _repo.GetByIdAsync(id);
+    }
+
+    public async Task<List<Trip>> GetAllAsync()
+    {
+        return await _repo.GetAllAsync();
     }
 
     // =========================
@@ -102,7 +118,11 @@ public class TripService
     // =========================
     // FINALIZAR CORRIDA
     // =========================
-    public async Task<Trip?> FinishTripAsync(Guid tripId, Guid driverId, double distanceKm)
+    public async Task<Trip?> FinishTripAsync(
+        Guid tripId,
+        Guid driverId,
+        double? actualDistanceKm,
+        decimal? actualDurationMinutes)
     {
         var trip = await _repo.GetByIdAsync(tripId);
 
@@ -116,10 +136,27 @@ public class TripService
             return null;
 
         trip.Status = TripStatus.Finished;
+        trip.ActualDistanceKm = actualDistanceKm.HasValue && actualDistanceKm.Value > 0
+            ? (decimal)actualDistanceKm.Value
+            : trip.EstimatedDistanceKm;
 
-        trip.Price = CalculateByKmPricing(distanceKm);
+        var durationMinutes = actualDurationMinutes.HasValue && actualDurationMinutes.Value > 0
+            ? actualDurationMinutes.Value
+            : trip.EstimatedDurationMinutes;
+
+        trip.Price = await CalculateFareAsync(trip.ActualDistanceKm, durationMinutes);
+
+        var driver = await _driverRepository.GetByIdAsync(driverId);
+
+        if (driver != null)
+        {
+            driver.Status = DriverStatus.Online;
+            driver.UpdatedAt = DateTime.UtcNow;
+            await _driverRepository.UpdateAsync(driver);
+        }
 
         await _repo.SaveChangesAsync();
+        await _driverRepository.SaveChangesAsync();
 
         return trip;
     }
@@ -139,5 +176,17 @@ public class TripService
         var extraKm = (decimal)(distanceKm - minKm);
 
         return basePrice + (extraKm * pricePerKm);
+    }
+
+    private async Task<decimal> CalculateFareAsync(decimal distanceKm, decimal durationMinutes)
+    {
+        try
+        {
+            return await _fareCalculator.CalculateAsync(distanceKm, durationMinutes);
+        }
+        catch
+        {
+            return CalculateByKmPricing((double)distanceKm);
+        }
     }
 }
