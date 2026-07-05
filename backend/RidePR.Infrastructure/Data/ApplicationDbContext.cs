@@ -47,6 +47,10 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(x => x.Driver)
                 .WithOne(x => x.User)
                 .HasForeignKey<Driver>(x => x.UserId);
+
+            entity.HasOne(x => x.Passenger)
+                .WithOne(x => x.User)
+                .HasForeignKey<Passenger>(x => x.UserId);
         });
 
         modelBuilder.Entity<Driver>(entity =>
@@ -156,6 +160,41 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(x => x.Driver)
                 .WithMany(x => x.Vehicles)
                 .HasForeignKey(x => x.DriverId);
+        });
+
+        modelBuilder.Entity<Passenger>(entity =>
+        {
+            entity.ToTable("Passengers");
+
+            entity.HasKey(x => x.Id);
+
+            entity.HasIndex(x => x.UserId)
+                .IsUnique();
+
+            entity.HasIndex(x => x.Cpf)
+                .IsUnique();
+
+            entity.Property(x => x.Cpf)
+                .HasMaxLength(14)
+                .IsRequired();
+
+            entity.Property(x => x.Phone)
+                .HasMaxLength(20);
+
+            entity.Property(x => x.EmergencyPhone)
+                .HasMaxLength(20);
+
+            entity.Property(x => x.Address)
+                .HasMaxLength(300);
+
+            entity.Property(x => x.City)
+                .HasMaxLength(100);
+
+            entity.Property(x => x.State)
+                .HasMaxLength(2);
+
+            entity.Property(x => x.ZipCode)
+                .HasMaxLength(10);
         });
 
         modelBuilder.Entity<DriverLocation>(entity =>

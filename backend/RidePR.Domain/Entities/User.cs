@@ -14,6 +14,8 @@ public class User
 
     public Driver? Driver { get; set; }
 
+    public Passenger? Passenger { get; set; }
+
     // Perfil do usuário
     public UserRole Role { get; set; } = UserRole.Passenger;
 

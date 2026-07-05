@@ -1,13 +1,13 @@
-namespace RidePR.Domain.Entities;
+using System.ComponentModel.DataAnnotations;
 
-public class Passenger
+namespace RidePR.Application.DTOs;
+
+public class CreatePassengerDto
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-
+    [Required]
     public Guid UserId { get; set; }
 
-    public User User { get; set; } = null!;
-
+    [Required]
     public string Cpf { get; set; } = "";
 
     public DateTime BirthDate { get; set; }
@@ -23,10 +23,4 @@ public class Passenger
     public string State { get; set; } = "";
 
     public string ZipCode { get; set; } = "";
-
-    public bool Active { get; set; } = true;
-
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-    public DateTime? UpdatedAt { get; set; }
 }
