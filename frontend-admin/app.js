@@ -219,7 +219,97 @@ async function login() {
 }
 
 async function list(path) {
-  await request(path);
+  const { response, body } = await request(path);
+
+  if (!response?.ok) {
+    return;
+  }
+
+  if (path.startsWith('/api/drivers')) {
+    renderDrivers(body);
+  }
+
+  if (path.startsWith('/api/vehicles')) {
+    renderVehicles(body);
+  }
+}
+
+function pageItems(body) {
+  return body?.items ?? body?.Items ?? (Array.isArray(body) ? body : []);
+}
+
+function cell(value) {
+  return value === null || value === undefined || value === '' ? '-' : String(value);
+}
+
+function renderDrivers(body) {
+  const rows = pageItems(body);
+  const table = $('driversTableBody');
+
+  if (!rows.length) {
+    table.innerHTML = '<tr><td colspan="7">Nenhum motorista encontrado.</td></tr>';
+    return;
+  }
+
+  table.innerHTML = rows.map((driver) => `
+    <tr>
+      <td>${cell(field(driver, 'Name'))}<br><span class="muted">${cell(field(driver, 'Email'))}</span></td>
+      <td>${cell(field(driver, 'Phone'))}</td>
+      <td>${cell(field(driver, 'Cpf'))}</td>
+      <td>${cell(field(driver, 'Cnh'))} / ${cell(field(driver, 'CnhCategory'))}</td>
+      <td>${driverStatusLabel(field(driver, 'Status'))}</td>
+      <td>${approvalStatusLabel(field(driver, 'ApprovalStatus'))}</td>
+      <td>${field(driver, 'Active') ? 'Sim' : 'Nao'}</td>
+    </tr>
+  `).join('');
+}
+
+function renderVehicles(body) {
+  const rows = pageItems(body);
+  const table = $('vehiclesTableBody');
+
+  if (!rows.length) {
+    table.innerHTML = '<tr><td colspan="7">Nenhum veiculo encontrado.</td></tr>';
+    return;
+  }
+
+  table.innerHTML = rows.map((vehicle) => `
+    <tr>
+      <td>${cell(field(vehicle, 'DriverName'))}</td>
+      <td>${cell(field(vehicle, 'Plate'))}</td>
+      <td>${cell(field(vehicle, 'Brand'))}</td>
+      <td>${cell(field(vehicle, 'Model'))}</td>
+      <td>${cell(field(vehicle, 'Year'))}</td>
+      <td>${cell(field(vehicle, 'Color'))}</td>
+      <td>${field(vehicle, 'Active') ? 'Sim' : 'Nao'}</td>
+    </tr>
+  `).join('');
+}
+
+function driverStatusLabel(status) {
+  return {
+    1: 'Offline',
+    2: 'Online',
+    3: 'Ocupado',
+    4: 'Pausado',
+    Offline: 'Offline',
+    Online: 'Online',
+    Busy: 'Ocupado',
+    Paused: 'Pausado',
+  }[String(status)] ?? cell(status);
+}
+
+function approvalStatusLabel(status) {
+  return {
+    0: 'Pendente',
+    1: 'Em analise',
+    2: 'Aprovado',
+    3: 'Rejeitado',
+    Pending: 'Pendente',
+    UnderReview: 'Em analise',
+    Approved: 'Aprovado',
+    Rejected: 'Rejeitado',
+  }[String(status)] ?? cell(status);
 }
 
 async function createTrip() {

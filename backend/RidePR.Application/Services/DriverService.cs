@@ -124,12 +124,32 @@ public class DriverService
         if (driver == null)
             return Result<DriverResponseDto>.Fail("Motorista nao encontrado.");
 
+        var normalizedCpf = dto.Cpf.Trim();
+        var normalizedCnh = dto.CnhNumber.Trim();
+
+        if (await _driverRepository.CpfExistsAsync(normalizedCpf, id))
+            return Result<DriverResponseDto>.Fail("CPF ja cadastrado.");
+
+        if (await _driverRepository.CnhExistsAsync(normalizedCnh, id))
+            return Result<DriverResponseDto>.Fail("CNH ja cadastrada.");
+
+        driver.Cpf = normalizedCpf;
+        driver.Rg = dto.Rg.Trim();
+        driver.BirthDate = ToUtc(dto.BirthDate);
         driver.Phone = dto.Phone.Trim();
         driver.EmergencyPhone = dto.EmergencyPhone.Trim();
         driver.Address = dto.Address.Trim();
         driver.City = dto.City.Trim();
         driver.State = dto.State.Trim().ToUpperInvariant();
         driver.ZipCode = dto.ZipCode.Trim();
+        driver.CnhNumber = normalizedCnh;
+        driver.CnhCategory = dto.CnhCategory.Trim().ToUpperInvariant();
+        driver.CnhExpiration = ToUtc(dto.CnhExpiration);
+        driver.Active = dto.Active;
+
+        if (!driver.Active)
+            driver.Status = DriverStatus.Offline;
+
         driver.UpdatedAt = DateTime.UtcNow;
 
         await _driverRepository.UpdateAsync(driver);
@@ -242,6 +262,13 @@ public class DriverService
             Email = driver.User?.Email ?? "",
             Phone = driver.Phone,
             Cpf = driver.Cpf,
+            Rg = driver.Rg,
+            BirthDate = driver.BirthDate,
+            EmergencyPhone = driver.EmergencyPhone,
+            Address = driver.Address,
+            City = driver.City,
+            State = driver.State,
+            ZipCode = driver.ZipCode,
             Cnh = driver.CnhNumber,
             CnhCategory = driver.CnhCategory,
             CnhExpiration = driver.CnhExpiration,

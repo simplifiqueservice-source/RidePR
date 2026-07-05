@@ -95,6 +95,16 @@ class ApiClient {
     );
   }
 
+  Future<dynamic> put(String path, Map<String, dynamic> body) async {
+    return _send(
+      () => http.put(
+        _uri(path),
+        headers: _headers(),
+        body: jsonEncode(body),
+      ),
+    );
+  }
+
   Map<String, String> _headers() {
     return {
       'Content-Type': 'application/json',
@@ -318,10 +328,30 @@ class _DriverHomePageState extends State<DriverHomePage> {
   final heading = TextEditingController(text: '0');
   final actualDistance = TextEditingController(text: '4.2');
   final actualDuration = TextEditingController(text: '18');
+  final cpf = TextEditingController();
+  final rg = TextEditingController();
+  final birthDate = TextEditingController(text: '1990-01-01');
+  final phone = TextEditingController();
+  final emergencyPhone = TextEditingController();
+  final address = TextEditingController();
+  final city = TextEditingController(text: 'Sao Paulo');
+  final state = TextEditingController(text: 'SP');
+  final zipCode = TextEditingController();
+  final cnhNumber = TextEditingController();
+  final cnhCategory = TextEditingController(text: 'B');
+  final cnhExpiration = TextEditingController(text: '2030-01-01');
+  final vehiclePlate = TextEditingController();
+  final vehicleBrand = TextEditingController();
+  final vehicleModel = TextEditingController();
+  final vehicleColor = TextEditingController();
+  final vehicleYear = TextEditingController(text: '2022');
+  final vehicleRenavam = TextEditingController();
+  final vehicleChassis = TextEditingController();
 
   HubConnection? hubConnection;
   Timer? locationTimer;
   Map<String, dynamic>? driver;
+  Map<String, dynamic>? vehicle;
   Map<String, dynamic>? currentOffer;
   Map<String, dynamic>? activeTrip;
   List<Map<String, dynamic>> availableTrips = [];
@@ -349,6 +379,25 @@ class _DriverHomePageState extends State<DriverHomePage> {
     heading.dispose();
     actualDistance.dispose();
     actualDuration.dispose();
+    cpf.dispose();
+    rg.dispose();
+    birthDate.dispose();
+    phone.dispose();
+    emergencyPhone.dispose();
+    address.dispose();
+    city.dispose();
+    state.dispose();
+    zipCode.dispose();
+    cnhNumber.dispose();
+    cnhCategory.dispose();
+    cnhExpiration.dispose();
+    vehiclePlate.dispose();
+    vehicleBrand.dispose();
+    vehicleModel.dispose();
+    vehicleColor.dispose();
+    vehicleYear.dispose();
+    vehicleRenavam.dispose();
+    vehicleChassis.dispose();
     super.dispose();
   }
 
@@ -383,6 +432,40 @@ class _DriverHomePageState extends State<DriverHomePage> {
                         ? widget.session.email ?? ''
                         : 'Status: ${_driverStatusLabel(driver!['status'])}',
                     trailing: driver == null ? 'Sem cadastro' : liveStatus,
+                  ),
+                  const SizedBox(height: 16),
+                  _DriverRegistrationCard(
+                    hasDriver: driver != null,
+                    cpf: cpf,
+                    rg: rg,
+                    birthDate: birthDate,
+                    phone: phone,
+                    emergencyPhone: emergencyPhone,
+                    address: address,
+                    city: city,
+                    state: state,
+                    zipCode: zipCode,
+                    cnhNumber: cnhNumber,
+                    cnhCategory: cnhCategory,
+                    cnhExpiration: cnhExpiration,
+                    active: _boolValue(driver, 'active', fallback: true),
+                    onSave: _saveDriver,
+                    onToggleActive: driver == null ? null : _toggleDriverActive,
+                  ),
+                  const SizedBox(height: 16),
+                  _VehicleRegistrationCard(
+                    hasDriver: driver != null,
+                    hasVehicle: vehicle != null,
+                    plate: vehiclePlate,
+                    brand: vehicleBrand,
+                    model: vehicleModel,
+                    color: vehicleColor,
+                    year: vehicleYear,
+                    renavam: vehicleRenavam,
+                    chassis: vehicleChassis,
+                    active: _boolValue(vehicle, 'active', fallback: true),
+                    onSave: driver == null ? null : _saveVehicle,
+                    onToggleActive: vehicle == null ? null : _toggleVehicleActive,
                   ),
                   const SizedBox(height: 16),
                   _AvailabilityCard(
@@ -452,11 +535,21 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
     try {
       final userId = widget.session.userId!;
-      driver = await widget.session.api.get('/api/drivers/by-user/$userId')
-          as Map<String, dynamic>;
-      selectedStatus = _driverStatusNumber(driver!['status']);
-      await _connectRealtime();
-      await _loadTrips();
+      try {
+        driver = await widget.session.api.get('/api/drivers/by-user/$userId')
+            as Map<String, dynamic>;
+        _fillDriverForm(driver!);
+        selectedStatus = _driverStatusNumber(driver!['status']);
+        await _loadVehicles();
+        await _connectRealtime();
+        await _loadTrips();
+      } catch (ex) {
+        driver = null;
+        vehicle = null;
+        availableTrips = [];
+        activeTrip = null;
+        lastEvent = 'Complete seu cadastro de motorista para ficar online.';
+      }
     } catch (ex) {
       lastEvent = ex.toString();
     } finally {
@@ -465,6 +558,10 @@ class _DriverHomePageState extends State<DriverHomePage> {
   }
 
   Future<void> _loadTrips() async {
+    if (driverId == null) {
+      return;
+    }
+
     final data = await widget.session.api.get('/api/trips');
     final list = data is List ? data : <dynamic>[];
     final trips = list
@@ -489,6 +586,30 @@ class _DriverHomePageState extends State<DriverHomePage> {
             orElse: () => null,
           );
     });
+  }
+
+  Future<void> _loadVehicles() async {
+    if (driverId == null) {
+      vehicle = null;
+      return;
+    }
+
+    final data = await widget.session.api.get('/api/vehicles', {
+      'driverId': driverId,
+      'pageSize': 20,
+    });
+    final items = data is Map ? data['items'] ?? data['Items'] : null;
+    final list = items is List ? items : <dynamic>[];
+    final vehicles = list
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+
+    vehicle = vehicles.isEmpty ? null : vehicles.first;
+
+    if (vehicle != null) {
+      _fillVehicleForm(vehicle!);
+    }
   }
 
   Future<void> _connectRealtime() async {
@@ -621,6 +742,105 @@ class _DriverHomePageState extends State<DriverHomePage> {
     } catch (ex) {
       setState(() => lastEvent = ex.toString());
     }
+  }
+
+  Future<void> _saveDriver() async {
+    final userId = widget.session.userId;
+
+    if (userId == null) {
+      setState(() => lastEvent = 'Faca login novamente para cadastrar motorista.');
+      return;
+    }
+
+    final body = {
+      'userId': userId,
+      'cpf': cpf.text.trim(),
+      'rg': rg.text.trim(),
+      'birthDate': _dateIso(birthDate),
+      'phone': phone.text.trim(),
+      'emergencyPhone': emergencyPhone.text.trim(),
+      'address': address.text.trim(),
+      'city': city.text.trim(),
+      'state': state.text.trim(),
+      'zipCode': zipCode.text.trim(),
+      'cnhNumber': cnhNumber.text.trim(),
+      'cnhCategory': cnhCategory.text.trim(),
+      'cnhExpiration': _dateIso(cnhExpiration),
+      'active': _boolValue(driver, 'active', fallback: true),
+    };
+
+    try {
+      final creating = driver == null;
+      final data = driver == null
+          ? await widget.session.api.post('/api/drivers', body)
+          : await widget.session.api.put('/api/drivers/$driverId', body);
+
+      setState(() {
+        driver = Map<String, dynamic>.from(data as Map);
+        _fillDriverForm(driver!);
+        lastEvent = creating
+            ? 'Cadastro de motorista criado.'
+            : 'Cadastro de motorista atualizado.';
+      });
+      await _load();
+    } catch (ex) {
+      setState(() => lastEvent = ex.toString());
+    }
+  }
+
+  Future<void> _toggleDriverActive() async {
+    if (driver == null) {
+      return;
+    }
+
+    final nextActive = !_boolValue(driver, 'active', fallback: true);
+    driver = {...driver!, 'active': nextActive};
+    await _saveDriver();
+  }
+
+  Future<void> _saveVehicle() async {
+    final currentDriverId = driverId;
+
+    if (currentDriverId == null) {
+      setState(() => lastEvent = 'Cadastre o motorista antes do veiculo.');
+      return;
+    }
+
+    final body = {
+      'driverId': currentDriverId,
+      'plate': vehiclePlate.text.trim(),
+      'brand': vehicleBrand.text.trim(),
+      'model': vehicleModel.text.trim(),
+      'color': vehicleColor.text.trim(),
+      'year': int.tryParse(vehicleYear.text.trim()) ?? 0,
+      'renavam': vehicleRenavam.text.trim(),
+      'chassis': vehicleChassis.text.trim(),
+      'active': _boolValue(vehicle, 'active', fallback: true),
+    };
+
+    try {
+      final data = vehicle == null
+          ? await widget.session.api.post('/api/vehicles', body)
+          : await widget.session.api.put('/api/vehicles/${_id(vehicle!)}', body);
+
+      setState(() {
+        vehicle = Map<String, dynamic>.from(data as Map);
+        _fillVehicleForm(vehicle!);
+        lastEvent = 'Veiculo salvo.';
+      });
+    } catch (ex) {
+      setState(() => lastEvent = ex.toString());
+    }
+  }
+
+  Future<void> _toggleVehicleActive() async {
+    if (vehicle == null) {
+      return;
+    }
+
+    final nextActive = !_boolValue(vehicle, 'active', fallback: true);
+    vehicle = {...vehicle!, 'active': nextActive};
+    await _saveVehicle();
   }
 
   Future<void> _acceptTrip(String tripId) async {
@@ -800,6 +1020,86 @@ class _DriverHomePageState extends State<DriverHomePage> {
     return '${source['id'] ?? source['Id'] ?? ''}';
   }
 
+  void _fillDriverForm(Map<String, dynamic> source) {
+    cpf.text = _value(source, 'cpf');
+    rg.text = _value(source, 'rg');
+    birthDate.text = _dateValue(source, 'birthDate');
+    phone.text = _value(source, 'phone');
+    emergencyPhone.text = _value(source, 'emergencyPhone');
+    address.text = _value(source, 'address');
+    city.text = _value(source, 'city');
+    state.text = _value(source, 'state');
+    zipCode.text = _value(source, 'zipCode');
+    cnhNumber.text = _value(source, 'cnh', fallbackKey: 'cnhNumber');
+    cnhCategory.text = _value(source, 'cnhCategory');
+    cnhExpiration.text = _dateValue(source, 'cnhExpiration');
+  }
+
+  void _fillVehicleForm(Map<String, dynamic> source) {
+    vehiclePlate.text = _value(source, 'plate');
+    vehicleBrand.text = _value(source, 'brand');
+    vehicleModel.text = _value(source, 'model');
+    vehicleColor.text = _value(source, 'color');
+    vehicleYear.text = _value(source, 'year');
+    vehicleRenavam.text = _value(source, 'renavam');
+    vehicleChassis.text = _value(source, 'chassis');
+  }
+
+  static String _value(
+    Map<String, dynamic> source,
+    String key, {
+    String? fallbackKey,
+  }) {
+    final pascal = key.substring(0, 1).toUpperCase() + key.substring(1);
+    final fallbackPascal = fallbackKey == null
+        ? null
+        : fallbackKey.substring(0, 1).toUpperCase() + fallbackKey.substring(1);
+    final value = source[key] ??
+        source[pascal] ??
+        (fallbackKey == null ? null : source[fallbackKey]) ??
+        (fallbackPascal == null ? null : source[fallbackPascal]);
+
+    return value == null ? '' : '$value';
+  }
+
+  static bool _boolValue(
+    Map<String, dynamic>? source,
+    String key, {
+    required bool fallback,
+  }) {
+    if (source == null) {
+      return fallback;
+    }
+
+    final value = _value(source, key);
+
+    if (value.isEmpty) {
+      return fallback;
+    }
+
+    return value.toLowerCase() == 'true';
+  }
+
+  static String _dateValue(Map<String, dynamic> source, String key) {
+    final value = _value(source, key);
+
+    if (value.length >= 10) {
+      return value.substring(0, 10);
+    }
+
+    return value;
+  }
+
+  static String _dateIso(TextEditingController controller) {
+    final value = controller.text.trim();
+
+    if (value.isEmpty) {
+      return DateTime.utc(1990).toIso8601String();
+    }
+
+    return DateTime.parse(value).toUtc().toIso8601String();
+  }
+
   static double _doubleValue(TextEditingController controller) {
     return double.tryParse(controller.text.trim().replaceAll(',', '.')) ?? 0;
   }
@@ -851,6 +1151,199 @@ class _DriverHomePageState extends State<DriverHomePage> {
   static String _pretty(String eventName, Map<String, dynamic> data) {
     const encoder = JsonEncoder.withIndent('  ');
     return '$eventName\n${encoder.convert(data)}';
+  }
+}
+
+class _DriverRegistrationCard extends StatelessWidget {
+  const _DriverRegistrationCard({
+    required this.hasDriver,
+    required this.cpf,
+    required this.rg,
+    required this.birthDate,
+    required this.phone,
+    required this.emergencyPhone,
+    required this.address,
+    required this.city,
+    required this.state,
+    required this.zipCode,
+    required this.cnhNumber,
+    required this.cnhCategory,
+    required this.cnhExpiration,
+    required this.active,
+    required this.onSave,
+    required this.onToggleActive,
+  });
+
+  final bool hasDriver;
+  final TextEditingController cpf;
+  final TextEditingController rg;
+  final TextEditingController birthDate;
+  final TextEditingController phone;
+  final TextEditingController emergencyPhone;
+  final TextEditingController address;
+  final TextEditingController city;
+  final TextEditingController state;
+  final TextEditingController zipCode;
+  final TextEditingController cnhNumber;
+  final TextEditingController cnhCategory;
+  final TextEditingController cnhExpiration;
+  final bool active;
+  final VoidCallback onSave;
+  final VoidCallback? onToggleActive;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: hasDriver ? 'Cadastro do motorista' : 'Cadastrar motorista',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: _Input(controller: cpf, label: 'CPF')),
+              const SizedBox(width: 12),
+              Expanded(child: _Input(controller: rg, label: 'RG')),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: _Input(
+                  controller: birthDate,
+                  label: 'Nascimento (AAAA-MM-DD)',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: _Input(controller: phone, label: 'Telefone')),
+            ],
+          ),
+          _Input(controller: emergencyPhone, label: 'Telefone emergencia'),
+          _Input(controller: address, label: 'Endereco'),
+          Row(
+            children: [
+              Expanded(child: _Input(controller: city, label: 'Cidade')),
+              const SizedBox(width: 12),
+              Expanded(child: _Input(controller: state, label: 'UF')),
+              const SizedBox(width: 12),
+              Expanded(child: _Input(controller: zipCode, label: 'CEP')),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(child: _Input(controller: cnhNumber, label: 'CNH')),
+              const SizedBox(width: 12),
+              Expanded(child: _Input(controller: cnhCategory, label: 'Categoria')),
+            ],
+          ),
+          _Input(
+            controller: cnhExpiration,
+            label: 'Validade CNH (AAAA-MM-DD)',
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onSave,
+                  icon: const Icon(Icons.save),
+                  label: Text(hasDriver ? 'Salvar motorista' : 'Cadastrar motorista'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onToggleActive,
+                  icon: Icon(active ? Icons.block : Icons.check_circle),
+                  label: Text(active ? 'Desativar' : 'Ativar'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VehicleRegistrationCard extends StatelessWidget {
+  const _VehicleRegistrationCard({
+    required this.hasDriver,
+    required this.hasVehicle,
+    required this.plate,
+    required this.brand,
+    required this.model,
+    required this.color,
+    required this.year,
+    required this.renavam,
+    required this.chassis,
+    required this.active,
+    required this.onSave,
+    required this.onToggleActive,
+  });
+
+  final bool hasDriver;
+  final bool hasVehicle;
+  final TextEditingController plate;
+  final TextEditingController brand;
+  final TextEditingController model;
+  final TextEditingController color;
+  final TextEditingController year;
+  final TextEditingController renavam;
+  final TextEditingController chassis;
+  final bool active;
+  final VoidCallback? onSave;
+  final VoidCallback? onToggleActive;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: hasVehicle ? 'Veiculo cadastrado' : 'Cadastrar veiculo',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!hasDriver)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text('Cadastre o motorista antes do veiculo.'),
+            ),
+          Row(
+            children: [
+              Expanded(child: _Input(controller: plate, label: 'Placa')),
+              const SizedBox(width: 12),
+              Expanded(child: _Input(controller: year, label: 'Ano')),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(child: _Input(controller: brand, label: 'Marca')),
+              const SizedBox(width: 12),
+              Expanded(child: _Input(controller: model, label: 'Modelo')),
+            ],
+          ),
+          _Input(controller: color, label: 'Cor'),
+          _Input(controller: renavam, label: 'Renavam'),
+          _Input(controller: chassis, label: 'Chassi'),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onSave,
+                  icon: const Icon(Icons.save),
+                  label: Text(hasVehicle ? 'Salvar veiculo' : 'Cadastrar veiculo'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onToggleActive,
+                  icon: Icon(active ? Icons.block : Icons.check_circle),
+                  label: Text(active ? 'Desativar' : 'Ativar'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 

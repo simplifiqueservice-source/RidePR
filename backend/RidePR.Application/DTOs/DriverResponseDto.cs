@@ -16,6 +16,20 @@ public class DriverResponseDto
 
     public string Cpf { get; set; } = "";
 
+    public string Rg { get; set; } = "";
+
+    public DateTime BirthDate { get; set; }
+
+    public string EmergencyPhone { get; set; } = "";
+
+    public string Address { get; set; } = "";
+
+    public string City { get; set; } = "";
+
+    public string State { get; set; } = "";
+
+    public string ZipCode { get; set; } = "";
+
     public string Cnh { get; set; } = "";
 
     public string CnhCategory { get; set; } = "";
