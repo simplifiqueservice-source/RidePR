@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -195,6 +196,37 @@ class AuthSession {
     await prefs.setString('role', role ?? '');
   }
 
+  Future<void> register(
+    String baseUrl,
+    String name,
+    String email,
+    String password,
+  ) async {
+    api.baseUrl = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final data = await api.post('/api/auth/register', {
+      'name': name.trim().isEmpty ? 'Motorista RidePR' : name.trim(),
+      'email': email.trim(),
+      'password': password,
+      'role': 2,
+    }) as Map<String, dynamic>;
+
+    api.accessToken = data['accessToken'] as String?;
+    refreshToken = data['refreshToken'] as String?;
+    userId = data['userId'] as String?;
+    this.name = data['name'] as String?;
+    this.email = data['email'] as String?;
+    role = data['role'] as String?;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('baseUrl', api.baseUrl);
+    await prefs.setString('accessToken', api.accessToken ?? '');
+    await prefs.setString('refreshToken', refreshToken ?? '');
+    await prefs.setString('userId', userId ?? '');
+    await prefs.setString('name', this.name ?? '');
+    await prefs.setString('email', this.email ?? '');
+    await prefs.setString('role', role ?? '');
+  }
+
   Future<void> logout() async {
     api.accessToken = null;
     refreshToken = null;
@@ -223,6 +255,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   late final baseUrl = TextEditingController(text: widget.session.api.baseUrl);
+  final name = TextEditingController(text: 'Motorista RidePR');
   final email = TextEditingController(text: 'motorista.mvp@ridepr.test');
   final password = TextEditingController(text: 'Senha123!');
   bool loading = false;
@@ -231,6 +264,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void dispose() {
     baseUrl.dispose();
+    name.dispose();
     email.dispose();
     password.dispose();
     super.dispose();
@@ -260,6 +294,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 28),
                 _Input(controller: baseUrl, label: 'Endereco da API'),
+                _Input(controller: name, label: 'Nome para criar conta'),
                 _Input(controller: email, label: 'E-mail'),
                 _Input(
                   controller: password,
@@ -275,6 +310,20 @@ class _LoginPageState extends State<LoginPage> {
                   onPressed: loading ? null : _submit,
                   icon: const Icon(Icons.login),
                   label: Text(loading ? 'Entrando...' : 'Entrar'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: loading ? null : _register,
+                  icon: const Icon(Icons.person_add),
+                  label: const Text('Criar conta'),
+                ),
+                TextButton(
+                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          'Recuperacao de senha ainda nao esta disponivel.'),
+                    ),
+                  ),
+                  child: const Text('Recuperar senha'),
                 ),
               ],
             ),
@@ -301,6 +350,33 @@ class _LoginPageState extends State<LoginPage> {
           widget.session.role != 'Administrator') {
         throw ApiException('Usuario sem perfil de motorista.');
       }
+
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => DriverHomePage(session: widget.session),
+        ),
+      );
+    } catch (ex) {
+      setState(() => error = ex.toString());
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> _register() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+
+    try {
+      await widget.session.register(
+        baseUrl.text.trim(),
+        name.text.trim(),
+        email.text.trim(),
+        password.text,
+      );
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -371,6 +447,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
   int selectedStatus = 2;
   String liveStatus = 'SignalR desconectado.';
   String lastEvent = 'Nenhum evento recebido ainda.';
+  String? locationError;
 
   String? get driverId => driver?['id']?.toString();
 
@@ -544,6 +621,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
                     online: selectedStatus == 2,
                     streaming: locationStreaming,
                     liveStatus: liveStatus,
+                    locationError: locationError,
                     offer: currentOffer,
                     activeTrip: activeTrip,
                     actualDistance: actualDistance,
@@ -1041,10 +1119,24 @@ class _DriverHomePageState extends State<DriverHomePage> {
       return;
     }
 
-    final lat = _doubleValue(latitude);
-    final lng = _doubleValue(longitude);
-    final currentSpeed = _doubleValue(speed);
-    final currentHeading = _doubleValue(heading);
+    if (selectedStatus != 2 && activeTrip == null) {
+      return;
+    }
+
+    final position = await _readCurrentPosition();
+
+    if (position == null) {
+      return;
+    }
+
+    final lat = position.latitude;
+    final lng = position.longitude;
+    final currentSpeed = position.speed.isFinite && position.speed >= 0
+        ? position.speed
+        : _doubleValue(speed);
+    final currentHeading = position.heading.isFinite && position.heading >= 0
+        ? position.heading
+        : _doubleValue(heading);
     final signature = '$lat:$lng:$currentSpeed:$currentHeading';
 
     if (signature == lastLocationSignature) {
@@ -1074,13 +1166,81 @@ class _DriverHomePageState extends State<DriverHomePage> {
       setState(() {
         lastLocationSignature = signature;
         driverPoint = LatLng(lat, lng);
+        latitude.text = lat.toStringAsFixed(6);
+        longitude.text = lng.toStringAsFixed(6);
+        speed.text = currentSpeed.toStringAsFixed(1);
+        heading.text = currentHeading.toStringAsFixed(0);
+        locationError = null;
         lastEvent =
             'DriverLocationUpdated\nlat=$lat lng=$lng speed=$currentSpeed heading=$currentHeading';
       });
       _moveMapToVisiblePoint();
     } catch (ex) {
-      setState(() => lastEvent = ex.toString());
+      setState(() {
+        locationError = _friendlyLocationError(ex);
+        lastEvent = locationError!;
+      });
     }
+  }
+
+  Future<Position?> _readCurrentPosition() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
+      if (!serviceEnabled) {
+        setState(() {
+          locationError = 'GPS desligado. Ative a localizacao do celular.';
+          lastEvent = locationError!;
+        });
+        return null;
+      }
+
+      var permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        setState(() {
+          locationError = 'Permissao de localizacao negada.';
+          lastEvent = locationError!;
+        });
+        return null;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          locationError =
+              'Permissao de localizacao bloqueada. Libere nas configuracoes do Android.';
+          lastEvent = locationError!;
+        });
+        return null;
+      }
+
+      return Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+    } catch (ex) {
+      setState(() {
+        locationError = _friendlyLocationError(ex);
+        lastEvent = locationError!;
+      });
+      return null;
+    }
+  }
+
+  static String _friendlyLocationError(Object error) {
+    final message = '$error';
+
+    if (message.contains('TimeoutException')) {
+      return 'Nao consegui pegar o GPS agora. Tente em local aberto.';
+    }
+
+    return message.replaceFirst('Exception: ', '');
   }
 
   void _toggleLocationStream() {
@@ -1096,7 +1256,9 @@ class _DriverHomePageState extends State<DriverHomePage> {
     locationTimer = Timer.periodic(
       const Duration(seconds: 5),
       (_) {
-        if (mounted && locationStreaming) {
+        if (mounted &&
+            locationStreaming &&
+            (selectedStatus == 2 || activeTrip != null)) {
           _sendLocation();
         }
       },
@@ -1511,6 +1673,7 @@ class _DriverRidePanel extends StatelessWidget {
     required this.online,
     required this.streaming,
     required this.liveStatus,
+    required this.locationError,
     required this.offer,
     required this.activeTrip,
     required this.actualDistance,
@@ -1528,6 +1691,7 @@ class _DriverRidePanel extends StatelessWidget {
   final bool online;
   final bool streaming;
   final String liveStatus;
+  final String? locationError;
   final Map<String, dynamic>? offer;
   final Map<String, dynamic>? activeTrip;
   final TextEditingController actualDistance;
@@ -1583,7 +1747,8 @@ class _DriverRidePanel extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Text(streaming ? 'Localizacao automatica ativa' : liveStatus),
+            Text(locationError ??
+                (streaming ? 'Localizacao automatica ativa' : liveStatus)),
             const SizedBox(height: 14),
             if (!driverReady)
               const Text('Complete cadastro e veiculo no menu para operar.')

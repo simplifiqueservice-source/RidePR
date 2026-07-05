@@ -140,6 +140,7 @@ class MvpTestHome extends StatefulWidget {
 
 class _MvpTestHomeState extends State<MvpTestHome> {
   final baseUrlController = TextEditingController(text: defaultApiBaseUrl);
+  final nameController = TextEditingController(text: 'Passageiro RidePR');
   final emailController =
       TextEditingController(text: 'passageiro.mvp@ridepr.test');
   final passwordController = TextEditingController(text: 'Senha123!');
@@ -203,6 +204,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     tripIdController.removeListener(_refreshActionState);
     driverIdController.removeListener(_refreshActionState);
     baseUrlController.dispose();
+    nameController.dispose();
     emailController.dispose();
     passwordController.dispose();
     passengerIdController.dispose();
@@ -251,12 +253,14 @@ class _MvpTestHomeState extends State<MvpTestHome> {
                 children: [
                   _LoginScreen(
                     baseUrlController: baseUrlController,
+                    nameController: nameController,
                     emailController: emailController,
                     passwordController: passwordController,
                     loggedIn: loggedIn,
                     loading: loading,
                     liveStatus: liveStatus,
                     onLogin: _login,
+                    onRegister: _register,
                   ),
                   _CreateTripScreen(
                     passengerCpfController: passengerCpfController,
@@ -437,6 +441,37 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       final result = await api.post('/api/auth/login', {
         'email': emailController.text.trim(),
         'password': passwordController.text,
+      });
+
+      final token = result.body is Map<String, dynamic>
+          ? result.body['accessToken'] as String?
+          : null;
+      final loggedUserId = result.body is Map<String, dynamic>
+          ? result.body['userId'] as String?
+          : null;
+
+      if (result.success && token != null) {
+        accessToken = token;
+        api.accessToken = token;
+        userId = loggedUserId;
+        await _loadPassenger();
+        await _connectRealtime();
+      }
+
+      return result;
+    });
+  }
+
+  Future<void> _register() async {
+    await _run(() async {
+      api.baseUrl = baseUrlController.text;
+      final result = await api.post('/api/auth/register', {
+        'name': nameController.text.trim().isEmpty
+            ? 'Passageiro RidePR'
+            : nameController.text.trim(),
+        'email': emailController.text.trim(),
+        'password': passwordController.text,
+        'role': 1,
       });
 
       final token = result.body is Map<String, dynamic>
@@ -880,21 +915,25 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 class _LoginScreen extends StatelessWidget {
   const _LoginScreen({
     required this.baseUrlController,
+    required this.nameController,
     required this.emailController,
     required this.passwordController,
     required this.loggedIn,
     required this.loading,
     required this.liveStatus,
     required this.onLogin,
+    required this.onRegister,
   });
 
   final TextEditingController baseUrlController;
+  final TextEditingController nameController;
   final TextEditingController emailController;
   final TextEditingController passwordController;
   final bool loggedIn;
   final bool loading;
   final String liveStatus;
   final VoidCallback onLogin;
+  final VoidCallback onRegister;
 
   @override
   Widget build(BuildContext context) {
@@ -902,6 +941,7 @@ class _LoginScreen extends StatelessWidget {
       title: 'Entrar no RidePR',
       children: [
         _Input(controller: baseUrlController, label: 'Base URL da API'),
+        _Input(controller: nameController, label: 'Nome para criar conta'),
         _Input(controller: emailController, label: 'E-mail'),
         _Input(
           controller: passwordController,
@@ -911,7 +951,20 @@ class _LoginScreen extends StatelessWidget {
         FilledButton.icon(
           onPressed: loading ? null : onLogin,
           icon: const Icon(Icons.login),
-          label: Text(loggedIn ? 'Login OK - entrar novamente' : 'Entrar'),
+          label: Text(loggedIn ? 'Entrar novamente' : 'Entrar'),
+        ),
+        OutlinedButton.icon(
+          onPressed: loading ? null : onRegister,
+          icon: const Icon(Icons.person_add),
+          label: const Text('Criar conta'),
+        ),
+        TextButton(
+          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Recuperacao de senha ainda nao esta disponivel.'),
+            ),
+          ),
+          child: const Text('Recuperar senha'),
         ),
         _StatusPill(
           text: loggedIn

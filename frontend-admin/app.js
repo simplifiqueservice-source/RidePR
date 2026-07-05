@@ -5,6 +5,7 @@ let originMarker = null;
 let destinationMarker = null;
 let driverMarker = null;
 let currentTrip = null;
+let activePanel = 'corridas';
 
 const $ = (id) => document.getElementById(id);
 
@@ -70,6 +71,24 @@ function setButtonStates() {
   $('acceptTripButton').disabled = !hasToken || !hasTripId || !hasDriverId;
   $('startTripButton').disabled = !hasToken || !hasTripId || !hasDriverId;
   $('finishTripButton').disabled = !hasToken || !hasTripId || !hasDriverId;
+}
+
+function showPanel(panelName) {
+  activePanel = panelName;
+  document.querySelectorAll('[data-panel]').forEach((panel) => {
+    const names = panel.dataset.panel.split(/\s+/);
+    panel.classList.toggle('hidden', !names.includes(panelName));
+  });
+  document.querySelectorAll('[data-panel-target]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.panelTarget === panelName);
+  });
+
+  setTimeout(() => {
+    if (map) {
+      map.invalidateSize();
+      fitMap();
+    }
+  }, 50);
 }
 
 function field(source, name) {
@@ -236,6 +255,14 @@ async function list(path) {
   if (path.startsWith('/api/passengers')) {
     renderPassengers(body);
   }
+}
+
+async function refreshTripsQuietly() {
+  if (!accessToken) {
+    return;
+  }
+
+  await request('/api/trips');
 }
 
 function pageItems(body) {
@@ -446,6 +473,7 @@ async function connectRealtime() {
   const onTrip = (eventName) => (trip) => {
     updateTripMap(trip, eventName);
     show('SIGNALR', { event: eventName, data: trip });
+    refreshTripsQuietly();
   };
 
   hubConnection.on('TripRequested', onTrip('TripRequested'));
@@ -492,9 +520,14 @@ document.querySelectorAll('[data-list]').forEach((button) => {
   button.addEventListener('click', () => list(button.dataset.list));
 });
 
+document.querySelectorAll('[data-panel-target]').forEach((button) => {
+  button.addEventListener('click', () => showPanel(button.dataset.panelTarget));
+});
+
 ['tripId', 'driverId'].forEach((id) => {
   $(id).addEventListener('input', setButtonStates);
 });
 
 initMap();
+showPanel(activePanel);
 setButtonStates();

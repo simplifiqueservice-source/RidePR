@@ -19,8 +19,16 @@
       <button id="clearTokenButton" type="button">Limpar token</button>
     </header>
 
+    <nav class="side-tabs" aria-label="Navegacao do painel">
+      <button class="tab-button active" data-panel-target="corridas" type="button">Corridas</button>
+      <button class="tab-button" data-panel-target="motoristas" type="button">Motoristas</button>
+      <button class="tab-button" data-panel-target="passageiros" type="button">Passageiros</button>
+      <button class="tab-button" data-panel-target="veiculos" type="button">Veiculos</button>
+      <button class="tab-button" data-panel-target="mapa" type="button">Mapa</button>
+    </nav>
+
     <main class="layout">
-      <section class="panel">
+      <section class="panel" data-panel="corridas motoristas passageiros veiculos mapa">
         <h2>Login admin</h2>
         <label>
           API baseUrl
@@ -38,7 +46,7 @@
         <p id="tokenStatus" class="muted">Sem token em memoria.</p>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-panel="corridas motoristas passageiros veiculos">
         <h2>Listagens</h2>
         <div class="button-grid">
           <button data-list="/api/users">Listar usuarios</button>
@@ -49,7 +57,7 @@
         </div>
       </section>
 
-      <section class="panel wide">
+      <section class="panel wide" data-panel="motoristas">
         <h2>Motoristas e veiculos</h2>
         <div class="table-wrap">
           <table>
@@ -89,7 +97,7 @@
         </div>
       </section>
 
-      <section class="panel wide">
+      <section class="panel wide" data-panel="passageiros">
         <h2>Passageiros</h2>
         <div class="table-wrap">
           <table>
@@ -110,7 +118,7 @@
         </div>
       </section>
 
-      <section class="panel wide">
+      <section class="panel wide" data-panel="corridas">
         <h2>Criar corrida de teste</h2>
         <div class="grid">
           <label>
@@ -152,7 +160,7 @@
         </div>
       </section>
 
-      <section class="panel wide">
+      <section class="panel wide" data-panel="corridas">
         <h2>Acoes de corrida</h2>
         <div class="grid">
           <label>
@@ -180,13 +188,13 @@
         </div>
       </section>
 
-      <section class="panel wide">
+      <section class="panel wide" data-panel="mapa">
         <h2>Mapa em tempo real</h2>
         <p id="liveStatus" class="muted">SignalR desconectado.</p>
         <div id="map"></div>
       </section>
 
-      <section class="panel response wide">
+      <section class="panel response wide" data-panel="corridas motoristas passageiros veiculos mapa">
         <h2>Resposta JSON</h2>
         <pre id="responseBox">Nenhuma chamada executada ainda.</pre>
       </section>
