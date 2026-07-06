@@ -13,18 +13,19 @@
         <strong>RidePR</strong>
         <span>Admin</span>
       </div>
-      <button class="tab-button active" data-panel-target="corridas" type="button">Corridas</button>
+      <button class="tab-button active" data-panel-target="dashboard" type="button">Dashboard</button>
+      <button class="tab-button" data-panel-target="corridas" type="button">Corridas</button>
       <button class="tab-button" data-panel-target="mapa" type="button">Mapa</button>
       <button class="tab-button" data-panel-target="motoristas" type="button">Motoristas</button>
       <button class="tab-button" data-panel-target="passageiros" type="button">Passageiros</button>
       <button class="tab-button" data-panel-target="veiculos" type="button">Veiculos</button>
-      <button class="tab-button" data-panel-target="config" type="button">Config</button>
+      <button class="tab-button" data-panel-target="config" type="button">Configuracoes</button>
     </aside>
 
     <main class="workspace">
       <header class="topbar">
         <div>
-          <h1 id="pageTitle">Corridas</h1>
+          <h1 id="pageTitle">Dashboard</h1>
           <p id="liveStatus">SignalR desconectado.</p>
         </div>
         <div class="top-actions">
@@ -33,7 +34,7 @@
         </div>
       </header>
 
-      <section class="login-strip" data-panel="corridas mapa motoristas passageiros veiculos config">
+      <section class="login-strip" data-panel="dashboard corridas mapa motoristas passageiros veiculos config">
         <div class="login-title">
           <strong>Entrar no RidePR Admin</strong>
           <span>Faca login para acessar corridas, mapa e cadastros.</span>
@@ -45,24 +46,36 @@
         <span id="tokenStatus">Sem login</span>
       </section>
 
-      <section class="dashboard" data-panel="corridas mapa motoristas passageiros veiculos">
+      <section class="dashboard" data-panel="dashboard corridas mapa motoristas passageiros veiculos">
         <article class="metric">
-          <span>Corrida atual</span>
-          <strong id="currentTripStatus">Nenhuma</strong>
+          <span>Corridas aguardando</span>
+          <strong id="waitingTripsMetric">0</strong>
         </article>
         <article class="metric">
-          <span>TripId</span>
-          <strong id="currentTripId">-</strong>
+          <span>Em andamento</span>
+          <strong id="activeTripsMetric">0</strong>
         </article>
         <article class="metric">
-          <span>Motorista</span>
-          <strong id="currentDriverId">-</strong>
+          <span>Motoristas online</span>
+          <strong id="onlineDriversMetric">0</strong>
+        </article>
+        <article class="metric">
+          <span>Passageiros</span>
+          <strong id="passengersMetric">0</strong>
+        </article>
+        <article class="metric">
+          <span>Finalizadas hoje</span>
+          <strong id="finishedTodayMetric">0</strong>
+        </article>
+        <article class="metric">
+          <span>Ultima atualizacao</span>
+          <strong id="lastUpdateMetric">-</strong>
         </article>
       </section>
 
-      <section class="split" data-panel="corridas mapa">
+      <section class="split" data-panel="dashboard corridas mapa">
         <div class="panel flow-panel" data-panel="corridas">
-          <h2>Fluxo de teste</h2>
+          <h2>Operacao de corrida</h2>
           <div class="field-line">
             <label>Passageiro</label>
             <input id="passengerId" value="9e0d144e-6446-4f6a-a016-ac7cecd2d7b8" placeholder="GUID do passageiro" />
@@ -208,7 +221,7 @@
       </section>
 
       <section class="panel response wide" data-panel="config">
-        <h2>Debug</h2>
+        <h2>Suporte tecnico</h2>
         <pre id="responseBox">Nenhuma chamada executada ainda.</pre>
       </section>
     </main>

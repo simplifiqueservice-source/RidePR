@@ -5,8 +5,11 @@ let originMarker = null;
 let destinationMarker = null;
 let driverMarker = null;
 let currentTrip = null;
-let activePanel = 'corridas';
+let activePanel = 'dashboard';
 let tripsCache = [];
+let driversCache = [];
+let passengersCache = [];
+let vehiclesCache = [];
 
 const $ = (id) => document.getElementById(id);
 
@@ -62,16 +65,8 @@ function setLiveStatus(message) {
 }
 
 function setCurrentTripSummary(trip) {
-  if (!trip) {
-    $('currentTripStatus').textContent = 'Nenhuma';
-    $('currentTripId').textContent = '-';
-    $('currentDriverId').textContent = '-';
-    return;
-  }
-
-  $('currentTripStatus').textContent = statusLabel(field(trip, 'Status'));
-  $('currentTripId').textContent = cell(field(trip, 'Id'));
-  $('currentDriverId').textContent = cell(field(trip, 'DriverId'));
+  currentTrip = trip;
+  updateDashboard();
 }
 
 function setButtonStates() {
@@ -90,12 +85,13 @@ function setButtonStates() {
 function showPanel(panelName) {
   activePanel = panelName;
   const labels = {
+    dashboard: 'Dashboard',
     corridas: 'Corridas',
     mapa: 'Mapa',
     motoristas: 'Motoristas',
     passageiros: 'Passageiros',
     veiculos: 'Veiculos',
-    config: 'Config',
+    config: 'Configuracoes',
   };
   $('pageTitle').textContent = labels[panelName] ?? 'RidePR';
   document.querySelectorAll('[data-panel]').forEach((panel) => {
@@ -271,7 +267,7 @@ async function login() {
     accessToken = body.accessToken;
     $('tokenStatus').textContent = 'Conectado';
     document.body.classList.remove('auth-locked');
-    showPanel('corridas');
+    showPanel('dashboard');
     await connectRealtime();
     await refreshActivePanel();
     setButtonStates();
@@ -324,10 +320,12 @@ function cell(value) {
 
 function renderDrivers(body) {
   const rows = pageItems(body);
+  driversCache = rows;
   const table = $('driversTableBody');
 
   if (!rows.length) {
     table.innerHTML = '<tr><td colspan="7">Nenhum motorista encontrado.</td></tr>';
+    updateDashboard();
     return;
   }
 
@@ -342,14 +340,17 @@ function renderDrivers(body) {
       <td>${field(driver, 'Active') ? 'Sim' : 'Nao'}</td>
     </tr>
   `).join('');
+  updateDashboard();
 }
 
 function renderVehicles(body) {
   const rows = pageItems(body);
+  vehiclesCache = rows;
   const table = $('vehiclesTableBody');
 
   if (!rows.length) {
     table.innerHTML = '<tr><td colspan="7">Nenhum veiculo encontrado.</td></tr>';
+    updateDashboard();
     return;
   }
 
@@ -364,14 +365,17 @@ function renderVehicles(body) {
       <td>${field(vehicle, 'Active') ? 'Sim' : 'Nao'}</td>
     </tr>
   `).join('');
+  updateDashboard();
 }
 
 function renderPassengers(body) {
   const rows = pageItems(body);
+  passengersCache = rows;
   const table = $('passengersTableBody');
 
   if (!rows.length) {
     table.innerHTML = '<tr><td colspan="6">Nenhum passageiro encontrado.</td></tr>';
+    updateDashboard();
     return;
   }
 
@@ -385,6 +389,7 @@ function renderPassengers(body) {
       <td>${field(passenger, 'Active') ? 'Sim' : 'Nao'}</td>
     </tr>
   `).join('');
+  updateDashboard();
 }
 
 function renderTrips(body) {
@@ -394,6 +399,7 @@ function renderTrips(body) {
 
   if (!rows.length) {
     table.innerHTML = '<tr><td colspan="6">Nenhuma corrida encontrada.</td></tr>';
+    updateDashboard();
     return;
   }
 
@@ -407,6 +413,7 @@ function renderTrips(body) {
       <td>R$ ${cell(field(trip, 'Price'))}</td>
     </tr>
   `).join('');
+  updateDashboard();
 }
 
 function upsertTrip(trip) {
@@ -415,9 +422,40 @@ function upsertTrip(trip) {
   renderTrips([trip, ...next]);
 }
 
+function updateDashboard() {
+  const today = new Date().toISOString().slice(0, 10);
+  const waiting = tripsCache.filter((trip) => statusLabel(field(trip, 'Status')) === 'Solicitada').length;
+  const active = tripsCache.filter((trip) => ['Aceita', 'Em andamento'].includes(statusLabel(field(trip, 'Status')))).length;
+  const finishedToday = tripsCache.filter((trip) => {
+    const status = statusLabel(field(trip, 'Status'));
+    const createdAt = String(field(trip, 'CreatedAt') ?? '');
+    return status === 'Finalizada' && createdAt.startsWith(today);
+  }).length;
+  const onlineDrivers = driversCache.filter((driver) => driverStatusLabel(field(driver, 'Status')) === 'Online').length;
+
+  $('waitingTripsMetric').textContent = waiting;
+  $('activeTripsMetric').textContent = active;
+  $('onlineDriversMetric').textContent = onlineDrivers;
+  $('passengersMetric').textContent = passengersCache.length;
+  $('finishedTodayMetric').textContent = finishedToday;
+  $('lastUpdateMetric').textContent = new Date().toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 async function refreshActivePanel() {
   if (!accessToken) {
     show('LOCAL', 'Faca login antes de atualizar.');
+    return;
+  }
+
+  if (activePanel === 'dashboard') {
+    await Promise.all([
+      list('/api/trips'),
+      list('/api/drivers'),
+      list('/api/passengers'),
+    ]);
     return;
   }
 

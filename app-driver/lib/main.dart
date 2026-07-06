@@ -2,12 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:signalr_netcore/signalr_client.dart';
+import 'package:signalr_netcore/signalr_client.dart' hide ConnectionState;
 
 const defaultApiBaseUrl = 'http://45.185.199.173:8282';
 
@@ -263,6 +264,7 @@ class _LoginPageState extends State<LoginPage> {
   final name = TextEditingController(text: 'Motorista RidePR');
   final email = TextEditingController(text: 'motorista.mvp@ridepr.test');
   final password = TextEditingController(text: 'Senha123!');
+  final confirmPassword = TextEditingController();
   bool loading = false;
   String? error;
 
@@ -272,6 +274,7 @@ class _LoginPageState extends State<LoginPage> {
     name.dispose();
     email.dispose();
     password.dispose();
+    confirmPassword.dispose();
     super.dispose();
   }
 
@@ -304,6 +307,11 @@ class _LoginPageState extends State<LoginPage> {
                 _Input(
                   controller: password,
                   label: 'Senha',
+                  obscureText: true,
+                ),
+                _Input(
+                  controller: confirmPassword,
+                  label: 'Confirmar senha',
                   obscureText: true,
                 ),
                 if (error != null) ...[
@@ -376,6 +384,10 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      if (password.text != confirmPassword.text) {
+        throw ApiException('As senhas nao conferem.');
+      }
+
       await widget.session.register(
         baseUrl.text.trim(),
         name.text.trim(),
@@ -454,6 +466,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
   String liveStatus = 'SignalR desconectado.';
   String lastEvent = 'Nenhum evento recebido ainda.';
   String? locationError;
+  bool offerDialogOpen = false;
 
   String? get driverId => driver?['id']?.toString();
   bool get driverReady =>
@@ -555,22 +568,41 @@ class _DriverHomePageState extends State<DriverHomePage> {
                 onToggleActive: vehicle == null ? null : _toggleVehicleActive,
               ),
               const SizedBox(height: 12),
-              _AvailableTripsCard(
-                trips: availableTrips,
-                onAccept: (trip) => _acceptTrip(_id(trip)),
+              ListTile(
+                leading: const Icon(Icons.person),
+                title: const Text('Perfil'),
+                subtitle: const Text('Dados pessoais, CNH e veiculo'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _openProfile();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: const Text('Minhas corridas'),
+                subtitle: const Text('Historico do motorista'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _openHistory();
+                },
               ),
               const SizedBox(height: 12),
-              _LocationCard(
-                latitude: latitude,
-                longitude: longitude,
-                speed: speed,
-                heading: heading,
-                streaming: locationStreaming,
-                onSend: _sendLocation,
-                onToggleStream: _toggleLocationStream,
+              ExpansionTile(
+                leading: const Icon(Icons.settings),
+                title: const Text('Suporte'),
+                children: [
+                  _LocationCard(
+                    latitude: latitude,
+                    longitude: longitude,
+                    speed: speed,
+                    heading: heading,
+                    streaming: locationStreaming,
+                    onSend: _sendLocation,
+                    onToggleStream: _toggleLocationStream,
+                  ),
+                  _DebugCard(text: lastEvent),
+                ],
               ),
-              const SizedBox(height: 12),
-              _DebugCard(text: lastEvent),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: _logout,
@@ -824,6 +856,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
         _applyRoutePoints(offer);
         lastEvent = _pretty('DispatchOfferReceived', offer);
       });
+      _presentOffer(offer);
     });
 
     connection.on('DispatchOfferExpired', (args) {
@@ -834,6 +867,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
           currentOffer = null;
           lastEvent = 'DispatchOfferExpired\n$tripId';
         });
+        _closeOfferDialog();
       }
     });
 
@@ -905,6 +939,53 @@ class _DriverHomePageState extends State<DriverHomePage> {
       }
     });
     _moveMapToVisiblePoint();
+  }
+
+  void _presentOffer(Map<String, dynamic> offer) {
+    if (offerDialogOpen || !mounted) {
+      return;
+    }
+
+    offerDialogOpen = true;
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.mediumImpact();
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _OfferDialog(
+        offer: offer,
+        seconds: 20,
+        onAccept: () {
+          Navigator.of(context, rootNavigator: true).pop();
+          offerDialogOpen = false;
+          _acceptTrip('${offer['tripId'] ?? offer['TripId']}');
+        },
+        onReject: () {
+          Navigator.of(context, rootNavigator: true).pop();
+          offerDialogOpen = false;
+          _rejectTrip('${offer['tripId'] ?? offer['TripId']}');
+        },
+        onTimeout: () {
+          if (!mounted || !offerDialogOpen) {
+            return;
+          }
+
+          Navigator.of(context, rootNavigator: true).pop();
+          offerDialogOpen = false;
+          _rejectTrip('${offer['tripId'] ?? offer['TripId']}');
+        },
+      ),
+    ).whenComplete(() => offerDialogOpen = false);
+  }
+
+  void _closeOfferDialog() {
+    if (!offerDialogOpen || !mounted) {
+      return;
+    }
+
+    Navigator.of(context, rootNavigator: true).maybePop();
+    offerDialogOpen = false;
   }
 
   Future<void> _updateStatus() async {
@@ -1338,6 +1419,80 @@ class _DriverHomePageState extends State<DriverHomePage> {
     );
   }
 
+  void _openProfile() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Perfil do motorista')),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _DriverRegistrationCard(
+                hasDriver: driver != null,
+                cpf: cpf,
+                rg: rg,
+                birthDate: birthDate,
+                phone: phone,
+                emergencyPhone: emergencyPhone,
+                address: address,
+                city: city,
+                state: state,
+                zipCode: zipCode,
+                cnhNumber: cnhNumber,
+                cnhCategory: cnhCategory,
+                cnhExpiration: cnhExpiration,
+                active: _boolValue(driver, 'active', fallback: true),
+                onSave: _saveDriver,
+                onToggleActive: driver == null ? null : _toggleDriverActive,
+              ),
+              const SizedBox(height: 12),
+              _VehicleRegistrationCard(
+                hasDriver: driver != null,
+                hasVehicle: vehicle != null,
+                plate: vehiclePlate,
+                brand: vehicleBrand,
+                model: vehicleModel,
+                color: vehicleColor,
+                year: vehicleYear,
+                renavam: vehicleRenavam,
+                chassis: vehicleChassis,
+                active: _boolValue(vehicle, 'active', fallback: true),
+                onSave: driver == null ? null : _saveVehicle,
+                onToggleActive: vehicle == null ? null : _toggleVehicleActive,
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _logout,
+                icon: const Icon(Icons.logout),
+                label: const Text('Sair'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openHistory() {
+    final currentDriverId = driverId;
+
+    if (currentDriverId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Complete o cadastro do motorista.')),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _DriverHistoryPage(
+          api: widget.session.api,
+          driverId: currentDriverId,
+        ),
+      ),
+    );
+  }
+
   static Map<String, dynamic>? _firstMap(List<Object?>? args) {
     if (args == null || args.isEmpty || args.first is! Map) {
       return null;
@@ -1716,6 +1871,307 @@ class _VehicleRegistrationCard extends StatelessWidget {
   }
 }
 
+class _DriverHistoryPage extends StatefulWidget {
+  const _DriverHistoryPage({
+    required this.api,
+    required this.driverId,
+  });
+
+  final ApiClient api;
+  final String driverId;
+
+  @override
+  State<_DriverHistoryPage> createState() => _DriverHistoryPageState();
+}
+
+class _DriverHistoryPageState extends State<_DriverHistoryPage> {
+  late Future<List<Map<String, dynamic>>> trips = _load();
+
+  Future<List<Map<String, dynamic>>> _load() async {
+    final data = await widget.api.get('/api/trips');
+    final list = data is List ? data : <dynamic>[];
+
+    return list
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where(
+          (trip) =>
+              '${trip['driverId'] ?? trip['DriverId']}'.toLowerCase() ==
+              widget.driverId.toLowerCase(),
+        )
+        .toList()
+      ..sort(
+        (a, b) => '${b['createdAt'] ?? b['CreatedAt']}'
+            .compareTo('${a['createdAt'] ?? a['CreatedAt']}'),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Minhas corridas')),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: trips,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+                child: Text('Nao foi possivel carregar o historico.'));
+          }
+
+          final rows = snapshot.data ?? [];
+
+          if (rows.isEmpty) {
+            return const Center(child: Text('Nenhuma corrida encontrada.'));
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              setState(() => trips = _load());
+              await trips;
+            },
+            child: ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemBuilder: (context, index) {
+                final trip = rows[index];
+                final date = _dateLabel(trip['createdAt'] ?? trip['CreatedAt']);
+                final price = trip['price'] ?? trip['Price'];
+
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(color: Theme.of(context).dividerColor),
+                  ),
+                  title: Text('${trip['origin'] ?? trip['Origin'] ?? '-'}'),
+                  subtitle: Text(
+                    '${trip['destination'] ?? trip['Destination'] ?? '-'}\n'
+                    '$date • ${_statusLabel(trip['status'] ?? trip['Status'])}',
+                  ),
+                  isThreeLine: true,
+                  trailing: Text(price == null ? '-' : 'R\$ $price'),
+                );
+              },
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemCount: rows.length,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  static String _dateLabel(Object? value) {
+    if (value == null) {
+      return 'Sem data';
+    }
+
+    final parsed = DateTime.tryParse('$value')?.toLocal();
+
+    if (parsed == null) {
+      return '$value';
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(parsed.year, parsed.month, parsed.day);
+
+    if (date == today) {
+      return 'Hoje';
+    }
+
+    if (date == today.subtract(const Duration(days: 1))) {
+      return 'Ontem';
+    }
+
+    return '${parsed.day.toString().padLeft(2, '0')}/'
+        '${parsed.month.toString().padLeft(2, '0')}/${parsed.year}';
+  }
+
+  static String _statusLabel(Object? status) {
+    return switch ('$status') {
+      '0' || 'Requested' => 'Solicitada',
+      '1' || 'Accepted' => 'Aceita',
+      '2' || 'InProgress' => 'Em andamento',
+      '3' || 'Finished' => 'Finalizada',
+      _ => '$status',
+    };
+  }
+}
+
+class _OfferDialog extends StatefulWidget {
+  const _OfferDialog({
+    required this.offer,
+    required this.seconds,
+    required this.onAccept,
+    required this.onReject,
+    required this.onTimeout,
+  });
+
+  final Map<String, dynamic> offer;
+  final int seconds;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+  final VoidCallback onTimeout;
+
+  @override
+  State<_OfferDialog> createState() => _OfferDialogState();
+}
+
+class _OfferDialogState extends State<_OfferDialog> {
+  late int remaining = widget.seconds;
+  Timer? timer;
+
+  @override
+  void initState() {
+    super.initState();
+    timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (remaining <= 1) {
+        timer?.cancel();
+        widget.onTimeout();
+        return;
+      }
+
+      setState(() => remaining--);
+    });
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final price = widget.offer['price'] ?? widget.offer['Price'];
+    final distance =
+        widget.offer['distanceKm'] ?? widget.offer['DistanceKm'] ?? '-';
+    final eta = widget.offer['etaMinutes'] ?? widget.offer['EtaMinutes'] ?? '-';
+
+    return Dialog.fullscreen(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.local_taxi, size: 32),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Nova corrida',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                  ),
+                  CircleAvatar(child: Text('$remaining')),
+                ],
+              ),
+              const SizedBox(height: 28),
+              _OfferLine(
+                icon: Icons.trip_origin,
+                label: 'Origem',
+                value:
+                    '${widget.offer['origin'] ?? widget.offer['Origin'] ?? '-'}',
+              ),
+              const SizedBox(height: 16),
+              _OfferLine(
+                icon: Icons.flag,
+                label: 'Destino',
+                value:
+                    '${widget.offer['destination'] ?? widget.offer['Destination'] ?? '-'}',
+              ),
+              const SizedBox(height: 24),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _InfoChip(label: 'Distancia', value: '$distance km'),
+                  _InfoChip(label: 'Tempo', value: '$eta min'),
+                  if (price != null)
+                    _InfoChip(label: 'Valor', value: 'R\$ $price'),
+                ],
+              ),
+              const Spacer(),
+              FilledButton(
+                onPressed: widget.onAccept,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                ),
+                child: const Text('Aceitar'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: widget.onReject,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                ),
+                child: const Text('Recusar'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OfferLine extends StatelessWidget {
+  const _OfferLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 4),
+              Text(value, style: Theme.of(context).textTheme.titleMedium),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      label: Text('$label: $value'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    );
+  }
+}
+
 class _DriverRidePanel extends StatelessWidget {
   const _DriverRidePanel({
     required this.driverReady,
@@ -1957,41 +2413,6 @@ class _TripSummary extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _AvailableTripsCard extends StatelessWidget {
-  const _AvailableTripsCard({
-    required this.trips,
-    required this.onAccept,
-  });
-
-  final List<Map<String, dynamic>> trips;
-  final ValueChanged<Map<String, dynamic>> onAccept;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SectionCard(
-      title: 'Corridas disponiveis',
-      child: trips.isEmpty
-          ? const Text('Nenhuma corrida aguardando motorista.')
-          : Column(
-              children: trips
-                  .map(
-                    (trip) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text('${trip['origin'] ?? trip['Origin']}'),
-                      subtitle:
-                          Text('${trip['destination'] ?? trip['Destination']}'),
-                      trailing: FilledButton(
-                        onPressed: () => onAccept(trip),
-                        child: const Text('Aceitar'),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
     );
   }
 }

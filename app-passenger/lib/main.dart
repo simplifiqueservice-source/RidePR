@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
-import 'package:signalr_netcore/signalr_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:signalr_netcore/signalr_client.dart' hide ConnectionState;
 
 const defaultApiBaseUrl = 'http://45.185.199.173:8282';
 
@@ -140,10 +143,10 @@ class MvpTestHome extends StatefulWidget {
 
 class _MvpTestHomeState extends State<MvpTestHome> {
   final baseUrlController = TextEditingController(text: defaultApiBaseUrl);
-  final nameController = TextEditingController(text: 'Passageiro RidePR');
-  final emailController =
-      TextEditingController(text: 'passageiro.mvp@ridepr.test');
-  final passwordController = TextEditingController(text: 'Senha123!');
+  final nameController = TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final confirmPasswordController = TextEditingController();
   final passengerIdController = TextEditingController();
   final passengerCpfController = TextEditingController(text: '11122233344');
   final passengerBirthDateController =
@@ -151,21 +154,18 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   final passengerPhoneController = TextEditingController(text: '11999990000');
   final passengerEmergencyPhoneController =
       TextEditingController(text: '11999990001');
-  final passengerAddressController = TextEditingController(text: 'Rua MVP');
-  final passengerCityController = TextEditingController(text: 'Sao Paulo');
-  final passengerStateController = TextEditingController(text: 'SP');
-  final passengerZipCodeController = TextEditingController(text: '01001000');
-  final driverIdController =
-      TextEditingController(text: 'd4ff8255-d3fe-4fb6-9fb9-2daaae8398c1');
+  final passengerAddressController = TextEditingController();
+  final passengerCityController = TextEditingController();
+  final passengerStateController = TextEditingController();
+  final passengerZipCodeController = TextEditingController();
+  final driverIdController = TextEditingController();
   final tripIdController = TextEditingController();
-  final originController =
-      TextEditingController(text: 'Praca da Se, Sao Paulo');
-  final destinationController =
-      TextEditingController(text: 'Avenida Paulista, Sao Paulo');
-  final originLatController = TextEditingController(text: '-23.55052');
-  final originLngController = TextEditingController(text: '-46.63331');
-  final destinationLatController = TextEditingController(text: '-23.56141');
-  final destinationLngController = TextEditingController(text: '-46.65588');
+  final originController = TextEditingController();
+  final destinationController = TextEditingController();
+  final originLatController = TextEditingController();
+  final originLngController = TextEditingController();
+  final destinationLatController = TextEditingController();
+  final destinationLngController = TextEditingController();
   final radiusController = TextEditingController(text: '5');
   final actualDistanceController = TextEditingController(text: '4.2');
   final actualDurationController = TextEditingController(text: '18');
@@ -173,8 +173,10 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   late final ApiClient api = ApiClient(baseUrl: baseUrlController.text);
   final mapController = MapController();
   HubConnection? hubConnection;
+  Timer? destinationSearchTimer;
   String? connectedHubUrl;
   bool loading = false;
+  bool restoring = true;
   bool debugVisible = false;
   String? accessToken;
   String liveStatus = 'SignalR desconectado.';
@@ -186,27 +188,33 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   LatLng? destinationPoint;
   LatLng? driverPoint;
   LatLng? lastCenteredPoint;
+  String? locationError;
+  List<Map<String, dynamic>> destinationSuggestions = [];
 
   bool get loggedIn => accessToken != null && accessToken!.isNotEmpty;
   bool get hasTripId => tripIdController.text.trim().isNotEmpty;
-  bool get hasDriverId => driverIdController.text.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     tripIdController.addListener(_refreshActionState);
     driverIdController.addListener(_refreshActionState);
+    destinationController.addListener(_searchDestination);
+    _restoreSession();
   }
 
   @override
   void dispose() {
     hubConnection?.stop();
+    destinationSearchTimer?.cancel();
     tripIdController.removeListener(_refreshActionState);
     driverIdController.removeListener(_refreshActionState);
+    destinationController.removeListener(_searchDestination);
     baseUrlController.dispose();
     nameController.dispose();
     emailController.dispose();
     passwordController.dispose();
+    confirmPasswordController.dispose();
     passengerIdController.dispose();
     passengerCpfController.dispose();
     passengerBirthDateController.dispose();
@@ -238,12 +246,19 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   @override
   Widget build(BuildContext context) {
+    if (restoring) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     if (!loggedIn) {
       return _PassengerAuthPage(
         baseUrlController: baseUrlController,
         nameController: nameController,
         emailController: emailController,
         passwordController: passwordController,
+        confirmPasswordController: confirmPasswordController,
         loading: loading,
         lastResponse: lastResponse,
         debugVisible: debugVisible,
@@ -261,78 +276,42 @@ class _MvpTestHomeState extends State<MvpTestHome> {
             children: [
               Text('RidePR', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 16),
-              ExpansionTile(
+              ListTile(
                 leading: const Icon(Icons.person),
-                title: const Text('Login e cadastro'),
-                initiallyExpanded: !loggedIn,
-                children: [
-                  _LoginScreen(
-                    baseUrlController: baseUrlController,
-                    nameController: nameController,
-                    emailController: emailController,
-                    passwordController: passwordController,
-                    loggedIn: loggedIn,
-                    loading: loading,
-                    liveStatus: liveStatus,
-                    onLogin: _login,
-                    onRegister: _register,
-                  ),
-                  _CreateTripScreen(
-                    passengerCpfController: passengerCpfController,
-                    passengerBirthDateController: passengerBirthDateController,
-                    passengerPhoneController: passengerPhoneController,
-                    passengerEmergencyPhoneController:
-                        passengerEmergencyPhoneController,
-                    passengerAddressController: passengerAddressController,
-                    passengerCityController: passengerCityController,
-                    passengerStateController: passengerStateController,
-                    passengerZipCodeController: passengerZipCodeController,
-                    passengerIdController: passengerIdController,
-                    tripIdController: tripIdController,
-                    originController: originController,
-                    destinationController: destinationController,
-                    originLatController: originLatController,
-                    originLngController: originLngController,
-                    destinationLatController: destinationLatController,
-                    destinationLngController: destinationLngController,
-                    loading: loading,
-                    canCreateTrip: loggedIn,
-                    passengerLoaded: passenger != null,
-                    onSavePassenger: _savePassenger,
-                    onCreateTrip: _createTrip,
-                  ),
-                ],
+                title: const Text('Perfil'),
+                subtitle: const Text('Dados pessoais e endereco'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _openProfile();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: const Text('Minhas corridas'),
+                subtitle: const Text('Historico do passageiro'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _openHistory();
+                },
               ),
               ExpansionTile(
-                leading: const Icon(Icons.tune),
-                title: const Text('Teste avancado'),
+                leading: const Icon(Icons.settings),
+                title: const Text('Configuracoes'),
                 children: [
-                  _TestButtonsScreen(
-                    tripIdController: tripIdController,
-                    driverIdController: driverIdController,
-                    radiusController: radiusController,
-                    actualDistanceController: actualDistanceController,
-                    actualDurationController: actualDurationController,
-                    loading: loading,
-                    canRequestDispatch: loggedIn && hasTripId,
-                    canDriverAction: loggedIn && hasTripId && hasDriverId,
-                    onRequestDispatch: _requestDispatch,
-                    onAccept: _acceptTrip,
-                    onStart: _startTrip,
-                    onFinish: _finishTrip,
+                  _Input(
+                      controller: baseUrlController, label: 'Endereco da API'),
+                  SwitchListTile(
+                    value: debugVisible,
+                    onChanged: (value) => setState(() => debugVisible = value),
+                    title: const Text('Suporte tecnico'),
+                    secondary: const Icon(Icons.bug_report),
                   ),
                 ],
-              ),
-              SwitchListTile(
-                value: debugVisible,
-                onChanged: (value) => setState(() => debugVisible = value),
-                title: const Text('Mostrar debug'),
-                secondary: const Icon(Icons.bug_report),
               ),
               if (debugVisible) _ResponsePanel(response: lastResponse),
               const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: _clearSession,
+                onPressed: () => _clearSession(),
                 icon: const Icon(Icons.logout),
                 label: const Text('Sair'),
               ),
@@ -410,8 +389,12 @@ class _MvpTestHomeState extends State<MvpTestHome> {
               passengerReady: passenger != null,
               tripStatus: tripStatus,
               liveStatus: liveStatus,
+              locationError: locationError,
               originController: originController,
               destinationController: destinationController,
+              destinationSuggestions: destinationSuggestions,
+              onUseMyLocation: _useCurrentLocation,
+              onSelectDestination: _selectDestination,
               onLogin: _login,
               onSavePassenger: _savePassenger,
               onCreateTrip: _createTrip,
@@ -469,8 +452,10 @@ class _MvpTestHomeState extends State<MvpTestHome> {
         accessToken = token;
         api.accessToken = token;
         userId = loggedUserId;
+        await _rememberSession(result.body as Map<String, dynamic>);
         await _loadPassenger();
         await _connectRealtime();
+        await _useCurrentLocation();
       }
 
       return result;
@@ -479,6 +464,10 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   Future<void> _register() async {
     await _run(() async {
+      if (passwordController.text != confirmPasswordController.text) {
+        throw LocalValidationException('As senhas nao conferem.');
+      }
+
       api.baseUrl = baseUrlController.text;
       final result = await api.post('/api/auth/register', {
         'name': nameController.text.trim().isEmpty
@@ -500,18 +489,66 @@ class _MvpTestHomeState extends State<MvpTestHome> {
         accessToken = token;
         api.accessToken = token;
         userId = loggedUserId;
+        await _rememberSession(result.body as Map<String, dynamic>);
         await _loadPassenger();
         await _connectRealtime();
+        await _useCurrentLocation();
       }
 
       return result;
     });
   }
 
+  Future<void> _restoreSession() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    baseUrlController.text = prefs.getString('baseUrl') ?? defaultApiBaseUrl;
+    accessToken = _storedValue(prefs, 'accessToken');
+    userId = _storedValue(prefs, 'userId');
+    api.baseUrl = baseUrlController.text;
+    api.accessToken = accessToken;
+
+    if (loggedIn) {
+      await _loadPassenger();
+      await _connectRealtime();
+      await _useCurrentLocation();
+    }
+
+    if (mounted) {
+      setState(() => restoring = false);
+    }
+  }
+
+  Future<void> _rememberSession(Map<String, dynamic> data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('baseUrl', api.baseUrl);
+    await prefs.setString('accessToken', accessToken ?? '');
+    await prefs.setString('userId', userId ?? '');
+    await prefs.setString('name', '${data['name'] ?? ''}');
+    await prefs.setString('email', '${data['email'] ?? ''}');
+  }
+
+  static String? _storedValue(SharedPreferences prefs, String key) {
+    final value = prefs.getString(key);
+    return value == null || value.isEmpty ? null : value;
+  }
+
   Future<void> _createTrip() async {
     await _run(() async {
       _requireLoggedIn();
       _requirePassenger();
+      if (_doubleValue(originLatController) == 0 ||
+          _doubleValue(originLngController) == 0) {
+        throw LocalValidationException(
+          'Use sua localizacao atual antes de pedir a corrida.',
+        );
+      }
+      if (_doubleValue(destinationLatController) == 0 ||
+          _doubleValue(destinationLngController) == 0) {
+        throw LocalValidationException(
+          'Escolha um destino valido na busca.',
+        );
+      }
       final result = await api.post('/api/trips', {
         'passengerId': passengerIdController.text.trim(),
         'origin': originController.text.trim(),
@@ -536,6 +573,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
           'timeoutSeconds': 30,
           'maxCandidates': 10,
         });
+        setState(() => tripStatus = 'Procurando motorista');
       }
 
       return result;
@@ -592,53 +630,132 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     });
   }
 
-  Future<void> _requestDispatch() async {
-    await _run(() {
-      _requireLoggedIn();
-      _requireTripId();
-      return api.post('/api/dispatch/request', {
-        'tripId': tripIdController.text.trim(),
-        'radiusKm': _doubleValue(radiusController),
-        'timeoutSeconds': 30,
-        'maxCandidates': 10,
+  Future<void> _useCurrentLocation() async {
+    final position = await _readCurrentPosition();
+
+    if (position == null) {
+      return;
+    }
+
+    final point = LatLng(position.latitude, position.longitude);
+    originPoint = point;
+    originLatController.text = point.latitude.toStringAsFixed(6);
+    originLngController.text = point.longitude.toStringAsFixed(6);
+
+    try {
+      final result = await api.post('/api/maps/reverse-geocode', {
+        'coordinate': {
+          'latitude': point.latitude,
+          'longitude': point.longitude,
+        },
       });
+
+      if (result.success && result.body is Map<String, dynamic>) {
+        originController.text =
+            '${(result.body as Map<String, dynamic>)['address'] ?? 'Minha localizacao'}';
+      } else {
+        originController.text = 'Minha localizacao';
+      }
+    } catch (_) {
+      originController.text = 'Minha localizacao';
+    }
+
+    setState(() {
+      locationError = null;
+      lastCenteredPoint = point;
+    });
+    mapController.move(point, 15);
+  }
+
+  Future<Position?> _readCurrentPosition() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
+      if (!serviceEnabled) {
+        setState(() => locationError = 'GPS desligado. Ative a localizacao.');
+        return null;
+      }
+
+      var permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        setState(() => locationError = 'Permissao de localizacao negada.');
+        return null;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(
+          () => locationError =
+              'Permissao bloqueada. Libere a localizacao nas configuracoes.',
+        );
+        return null;
+      }
+
+      return Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+    } catch (ex) {
+      setState(() => locationError = _friendlyError('$ex'));
+      return null;
+    }
+  }
+
+  void _searchDestination() {
+    destinationSearchTimer?.cancel();
+    final query = destinationController.text.trim();
+
+    if (!loggedIn || query.length < 4) {
+      if (destinationSuggestions.isNotEmpty) {
+        setState(() => destinationSuggestions = []);
+      }
+      return;
+    }
+
+    destinationSearchTimer = Timer(const Duration(milliseconds: 450), () async {
+      try {
+        final result = await api.post('/api/maps/geocode', {'address': query});
+
+        if (!mounted ||
+            !result.success ||
+            result.body is! Map<String, dynamic>) {
+          return;
+        }
+
+        setState(() {
+          destinationSuggestions = [result.body as Map<String, dynamic>];
+        });
+      } catch (_) {
+        if (mounted) {
+          setState(() => destinationSuggestions = []);
+        }
+      }
     });
   }
 
-  Future<void> _acceptTrip() async {
-    await _run(() {
-      _requireLoggedIn();
-      _requireTripId();
-      _requireDriverId();
-      return api.post('/api/dispatch/accept', {
-        'tripId': tripIdController.text.trim(),
-        'driverId': driverIdController.text.trim(),
-      });
-    });
-  }
+  void _selectDestination(Map<String, dynamic> suggestion) {
+    destinationController.removeListener(_searchDestination);
+    destinationController.text = '${suggestion['address'] ?? ''}';
+    destinationController.addListener(_searchDestination);
 
-  Future<void> _startTrip() async {
-    await _run(() {
-      _requireLoggedIn();
-      _requireTripId();
-      _requireDriverId();
-      return api.post('/api/trips/${tripIdController.text.trim()}/start', {
-        'driverId': driverIdController.text.trim(),
-      });
-    });
-  }
+    final point = LatLng(
+      _numField(suggestion, 'latitude'),
+      _numField(suggestion, 'longitude'),
+    );
 
-  Future<void> _finishTrip() async {
-    await _run(() {
-      _requireLoggedIn();
-      _requireTripId();
-      _requireDriverId();
-      return api.post('/api/trips/${tripIdController.text.trim()}/finish', {
-        'driverId': driverIdController.text.trim(),
-        'actualDistanceKm': _doubleValue(actualDistanceController),
-        'actualDurationMinutes': _doubleValue(actualDurationController),
-      });
+    setState(() {
+      destinationPoint = point;
+      destinationLatController.text = point.latitude.toStringAsFixed(6);
+      destinationLngController.text = point.longitude.toStringAsFixed(6);
+      destinationSuggestions = [];
     });
+    _moveMapToVisiblePoint();
   }
 
   Future<void> _getTrip() async {
@@ -794,16 +911,93 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     }
   }
 
-  void _clearSession() {
-    hubConnection?.stop();
+  Future<void> _clearSession() async {
+    await hubConnection?.stop();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
     setState(() {
       accessToken = null;
       api.accessToken = null;
+      userId = null;
+      passenger = null;
       hubConnection = null;
       connectedHubUrl = null;
       liveStatus = 'SignalR desconectado.';
       lastResponse = 'Token removido da memoria.';
     });
+  }
+
+  void _openProfile() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Perfil')),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _Input(controller: nameController, label: 'Nome'),
+              _Input(controller: passengerCpfController, label: 'CPF'),
+              _Input(controller: passengerPhoneController, label: 'Telefone'),
+              _Input(
+                controller: passengerBirthDateController,
+                label: 'Nascimento (AAAA-MM-DD)',
+              ),
+              _Input(controller: passengerAddressController, label: 'Endereco'),
+              Row(
+                children: [
+                  Expanded(
+                    child: _Input(
+                      controller: passengerCityController,
+                      label: 'Cidade',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _Input(
+                      controller: passengerStateController,
+                      label: 'UF',
+                    ),
+                  ),
+                ],
+              ),
+              _Input(controller: passengerZipCodeController, label: 'CEP'),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: loading ? null : () => _savePassenger(),
+                icon: const Icon(Icons.save),
+                label: const Text('Salvar'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => _clearSession(),
+                icon: const Icon(Icons.logout),
+                label: const Text('Sair'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openHistory() {
+    final currentPassengerId = passengerIdController.text.trim();
+
+    if (currentPassengerId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Complete seu perfil primeiro.')),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _PassengerHistoryPage(
+          api: api,
+          passengerId: currentPassengerId,
+        ),
+      ),
+    );
   }
 
   static bool _samePoint(LatLng? left, LatLng? right) {
@@ -860,12 +1054,6 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     }
   }
 
-  void _requireDriverId() {
-    if (!hasDriverId) {
-      throw LocalValidationException('Informe o DriverId do motorista.');
-    }
-  }
-
   void _requirePassenger() {
     if (passengerIdController.text.trim().isEmpty) {
       throw LocalValidationException(
@@ -918,9 +1106,9 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   static String _eventLabel(String value) {
     return switch (value) {
-      'TripRequested' => 'Corrida solicitada',
-      'TripAccepted' => 'Corrida aceita',
-      'TripStarted' => 'Corrida iniciada',
+      'TripRequested' => 'Procurando motorista',
+      'TripAccepted' => 'Motorista a caminho',
+      'TripStarted' => 'Corrida em andamento',
       'TripFinished' => 'Corrida finalizada',
       'Status' => 'Status consultado',
       _ => value,
@@ -933,78 +1121,13 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   }
 }
 
-class _LoginScreen extends StatelessWidget {
-  const _LoginScreen({
-    required this.baseUrlController,
-    required this.nameController,
-    required this.emailController,
-    required this.passwordController,
-    required this.loggedIn,
-    required this.loading,
-    required this.liveStatus,
-    required this.onLogin,
-    required this.onRegister,
-  });
-
-  final TextEditingController baseUrlController;
-  final TextEditingController nameController;
-  final TextEditingController emailController;
-  final TextEditingController passwordController;
-  final bool loggedIn;
-  final bool loading;
-  final String liveStatus;
-  final VoidCallback onLogin;
-  final VoidCallback onRegister;
-
-  @override
-  Widget build(BuildContext context) {
-    return _ScreenFrame(
-      title: 'Entrar no RidePR',
-      children: [
-        _Input(controller: baseUrlController, label: 'Base URL da API'),
-        _Input(controller: nameController, label: 'Nome para criar conta'),
-        _Input(controller: emailController, label: 'E-mail'),
-        _Input(
-          controller: passwordController,
-          label: 'Senha',
-          obscureText: true,
-        ),
-        FilledButton.icon(
-          onPressed: loading ? null : onLogin,
-          icon: const Icon(Icons.login),
-          label: Text(loggedIn ? 'Entrar novamente' : 'Entrar'),
-        ),
-        OutlinedButton.icon(
-          onPressed: loading ? null : onRegister,
-          icon: const Icon(Icons.person_add),
-          label: const Text('Criar conta'),
-        ),
-        TextButton(
-          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Recuperacao de senha ainda nao esta disponivel.'),
-            ),
-          ),
-          child: const Text('Recuperar senha'),
-        ),
-        _StatusPill(
-          text: loggedIn
-              ? 'Conectado. Voce ja pode pedir corrida.'
-              : 'Entre para pedir uma corrida.',
-          icon: loggedIn ? Icons.check_circle : Icons.info,
-        ),
-        _StatusPill(text: liveStatus, icon: Icons.wifi_tethering),
-      ],
-    );
-  }
-}
-
 class _PassengerAuthPage extends StatelessWidget {
   const _PassengerAuthPage({
     required this.baseUrlController,
     required this.nameController,
     required this.emailController,
     required this.passwordController,
+    required this.confirmPasswordController,
     required this.loading,
     required this.lastResponse,
     required this.debugVisible,
@@ -1017,6 +1140,7 @@ class _PassengerAuthPage extends StatelessWidget {
   final TextEditingController nameController;
   final TextEditingController emailController;
   final TextEditingController passwordController;
+  final TextEditingController confirmPasswordController;
   final bool loading;
   final String lastResponse;
   final bool debugVisible;
@@ -1055,6 +1179,11 @@ class _PassengerAuthPage extends StatelessWidget {
                 _Input(
                   controller: passwordController,
                   label: 'Senha',
+                  obscureText: true,
+                ),
+                _Input(
+                  controller: confirmPasswordController,
+                  label: 'Confirmar senha',
                   obscureText: true,
                 ),
                 const SizedBox(height: 8),
@@ -1102,6 +1231,126 @@ class _PassengerAuthPage extends StatelessWidget {
   }
 }
 
+class _PassengerHistoryPage extends StatefulWidget {
+  const _PassengerHistoryPage({
+    required this.api,
+    required this.passengerId,
+  });
+
+  final ApiClient api;
+  final String passengerId;
+
+  @override
+  State<_PassengerHistoryPage> createState() => _PassengerHistoryPageState();
+}
+
+class _PassengerHistoryPageState extends State<_PassengerHistoryPage> {
+  late Future<List<Map<String, dynamic>>> trips = _load();
+
+  Future<List<Map<String, dynamic>>> _load() async {
+    final result = await widget.api.get('/api/trips');
+    final list = result.body is List ? result.body as List : <dynamic>[];
+
+    return list
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where(
+          (trip) =>
+              '${trip['passengerId'] ?? trip['PassengerId']}'.toLowerCase() ==
+              widget.passengerId.toLowerCase(),
+        )
+        .toList()
+      ..sort(
+        (a, b) => '${b['createdAt'] ?? b['CreatedAt']}'
+            .compareTo('${a['createdAt'] ?? a['CreatedAt']}'),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Minhas corridas')),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: trips,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return const Center(
+              child: Text('Nao foi possivel carregar o historico.'),
+            );
+          }
+
+          final rows = snapshot.data ?? [];
+
+          if (rows.isEmpty) {
+            return const Center(child: Text('Nenhuma corrida encontrada.'));
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              setState(() => trips = _load());
+              await trips;
+            },
+            child: ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: rows.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final trip = rows[index];
+                final price = trip['price'] ?? trip['Price'];
+
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(color: Theme.of(context).dividerColor),
+                  ),
+                  title: Text('${trip['origin'] ?? trip['Origin'] ?? '-'}'),
+                  subtitle: Text(
+                    '${trip['destination'] ?? trip['Destination'] ?? '-'}\n'
+                    '${_dateLabel(trip['createdAt'] ?? trip['CreatedAt'])} • '
+                    '${_statusLabel(trip['status'] ?? trip['Status'])}',
+                  ),
+                  isThreeLine: true,
+                  trailing: Text(price == null ? '-' : 'R\$ $price'),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  static String _dateLabel(Object? value) {
+    final parsed = DateTime.tryParse('$value')?.toLocal();
+
+    if (parsed == null) {
+      return 'Sem data';
+    }
+
+    return '${parsed.day.toString().padLeft(2, '0')}/'
+        '${parsed.month.toString().padLeft(2, '0')}/${parsed.year}';
+  }
+
+  static String _statusLabel(Object? status) {
+    return switch ('$status') {
+      '0' || 'Requested' => 'Solicitada',
+      '1' || 'Accepted' => 'Aceita',
+      '2' || 'InProgress' => 'Em andamento',
+      '3' || 'Finished' => 'Finalizada',
+      _ => '$status',
+    };
+  }
+}
+
+// ignore: unused_element
 class _CreateTripScreen extends StatelessWidget {
   const _CreateTripScreen({
     required this.passengerCpfController,
@@ -1199,7 +1448,9 @@ class _CreateTripScreen extends StatelessWidget {
         ExpansionTile(
           title: const Text('Avancado'),
           children: [
-            _Input(controller: passengerIdController, label: 'Codigo do passageiro'),
+            _Input(
+                controller: passengerIdController,
+                label: 'Codigo do passageiro'),
             _Input(controller: tripIdController, label: 'Codigo da corrida'),
             Row(
               children: [
@@ -1243,6 +1494,7 @@ class _CreateTripScreen extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _TestButtonsScreen extends StatelessWidget {
   const _TestButtonsScreen({
     required this.tripIdController,
@@ -1320,8 +1572,12 @@ class _PassengerRideCard extends StatelessWidget {
     required this.passengerReady,
     required this.tripStatus,
     required this.liveStatus,
+    required this.locationError,
     required this.originController,
     required this.destinationController,
+    required this.destinationSuggestions,
+    required this.onUseMyLocation,
+    required this.onSelectDestination,
     required this.onLogin,
     required this.onSavePassenger,
     required this.onCreateTrip,
@@ -1333,8 +1589,12 @@ class _PassengerRideCard extends StatelessWidget {
   final bool passengerReady;
   final String tripStatus;
   final String liveStatus;
+  final String? locationError;
   final TextEditingController originController;
   final TextEditingController destinationController;
+  final List<Map<String, dynamic>> destinationSuggestions;
+  final VoidCallback onUseMyLocation;
+  final ValueChanged<Map<String, dynamic>> onSelectDestination;
   final VoidCallback onLogin;
   final VoidCallback onSavePassenger;
   final VoidCallback onCreateTrip;
@@ -1383,10 +1643,22 @@ class _PassengerRideCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            _RideInput(
-              controller: originController,
-              icon: Icons.trip_origin,
-              label: 'Origem',
+            Row(
+              children: [
+                Expanded(
+                  child: _RideInput(
+                    controller: originController,
+                    icon: Icons.trip_origin,
+                    label: 'Origem',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Minha localizacao',
+                  onPressed: loading ? null : onUseMyLocation,
+                  icon: const Icon(Icons.my_location),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             _RideInput(
@@ -1394,11 +1666,34 @@ class _PassengerRideCard extends StatelessWidget {
               icon: Icons.flag,
               label: 'Destino',
             ),
+            if (destinationSuggestions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ...destinationSuggestions.map(
+                (suggestion) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.place),
+                  title: Text('${suggestion['address'] ?? ''}'),
+                  onTap: () => onSelectDestination(suggestion),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Text(tripStatus, style: Theme.of(context).textTheme.titleMedium),
+            if (locationError != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                locationError!,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
             const SizedBox(height: 4),
             Text(
-              liveStatus.replaceFirst('SignalR', 'Tempo real'),
+              liveStatus.toLowerCase().contains('conectado')
+                  ? 'Atualizacao automatica ativa'
+                  : 'Atualizando status da corrida',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 14),
@@ -1503,33 +1798,6 @@ class _ScreenFrame extends StatelessWidget {
         const SizedBox(height: 16),
         ...children.expand((child) => [child, const SizedBox(height: 12)]),
       ],
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.text, required this.icon});
-
-  final String text;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Icon(icon, size: 20),
-            const SizedBox(width: 8),
-            Expanded(child: Text(text)),
-          ],
-        ),
-      ),
     );
   }
 }
