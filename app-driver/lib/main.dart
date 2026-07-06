@@ -164,12 +164,17 @@ class AuthSession {
   Future<void> restore() async {
     final prefs = await SharedPreferences.getInstance();
     api.baseUrl = prefs.getString('baseUrl') ?? api.baseUrl;
-    api.accessToken = prefs.getString('accessToken');
-    refreshToken = prefs.getString('refreshToken');
-    userId = prefs.getString('userId');
-    name = prefs.getString('name');
-    email = prefs.getString('email');
-    role = prefs.getString('role');
+    api.accessToken = _storedValue(prefs, 'accessToken');
+    refreshToken = _storedValue(prefs, 'refreshToken');
+    userId = _storedValue(prefs, 'userId');
+    name = _storedValue(prefs, 'name');
+    email = _storedValue(prefs, 'email');
+    role = _storedValue(prefs, 'role');
+  }
+
+  static String? _storedValue(SharedPreferences prefs, String key) {
+    final value = prefs.getString(key);
+    return value == null || value.isEmpty ? null : value;
   }
 
   Future<void> login(String baseUrl, String email, String password) async {
@@ -402,8 +407,8 @@ class DriverHomePage extends StatefulWidget {
 }
 
 class _DriverHomePageState extends State<DriverHomePage> {
-  final latitude = TextEditingController(text: '-23.55052');
-  final longitude = TextEditingController(text: '-46.63331');
+  final latitude = TextEditingController();
+  final longitude = TextEditingController();
   final speed = TextEditingController(text: '0');
   final heading = TextEditingController(text: '0');
   final actualDistance = TextEditingController(text: '4.2');
@@ -441,6 +446,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
   LatLng? originPoint;
   LatLng? destinationPoint;
   LatLng? lastCenteredPoint;
+  LatLng? lastSentLocationPoint;
   String? lastLocationSignature;
   bool loading = true;
   bool locationStreaming = false;
@@ -450,6 +456,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
   String? locationError;
 
   String? get driverId => driver?['id']?.toString();
+  bool get driverReady =>
+      driver != null &&
+      vehicle != null &&
+      _boolValue(driver, 'active', fallback: false) &&
+      _boolValue(vehicle, 'active', fallback: false);
 
   @override
   void initState() {
@@ -570,87 +581,91 @@ class _DriverHomePageState extends State<DriverHomePage> {
           ),
         ),
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : Stack(
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: FlutterMap(
+              mapController: mapController,
+              options: const MapOptions(
+                initialCenter: LatLng(-23.555, -46.645),
+                initialZoom: 13,
+              ),
               children: [
-                Positioned.fill(
-                  child: FlutterMap(
-                    mapController: mapController,
-                    options: const MapOptions(
-                      initialCenter: LatLng(-23.555, -46.645),
-                      initialZoom: 13,
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.ridepr.driver',
-                      ),
-                      MarkerLayer(markers: _markers()),
-                    ],
-                  ),
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.ridepr.driver',
                 ),
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Builder(
-                          builder: (context) => FloatingActionButton.small(
-                            heroTag: 'driver-menu',
-                            onPressed: () =>
-                                Scaffold.of(context).openEndDrawer(),
-                            child: const Icon(Icons.menu),
-                          ),
-                        ),
-                        const Spacer(),
-                        FloatingActionButton.small(
-                          heroTag: 'driver-refresh',
-                          onPressed: _load,
-                          child: const Icon(Icons.refresh),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: _DriverRidePanel(
-                    driverReady: driver != null && vehicle != null,
-                    online: selectedStatus == 2,
-                    streaming: locationStreaming,
-                    liveStatus: liveStatus,
-                    locationError: locationError,
-                    offer: currentOffer,
-                    activeTrip: activeTrip,
-                    actualDistance: actualDistance,
-                    actualDuration: actualDuration,
-                    onToggleOnline: _toggleAvailability,
-                    onAccept: currentOffer == null
-                        ? null
-                        : () => _acceptTrip(currentOffer!['tripId'].toString()),
-                    onReject: currentOffer == null
-                        ? null
-                        : () => _rejectTrip(currentOffer!['tripId'].toString()),
-                    onStart: activeTrip == null
-                        ? null
-                        : () => _startTrip(_id(activeTrip!)),
-                    onFinish: activeTrip == null
-                        ? null
-                        : () => _finishTrip(_id(activeTrip!)),
-                    canStart: _tripStatusLabel(
-                          activeTrip?['status'] ?? activeTrip?['Status'],
-                        ) ==
-                        'Accepted',
-                    canFinish: _tripStatusLabel(
-                          activeTrip?['status'] ?? activeTrip?['Status'],
-                        ) ==
-                        'InProgress',
-                  ),
-                ),
+                MarkerLayer(markers: _markers()),
               ],
             ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Builder(
+                    builder: (context) => FloatingActionButton.small(
+                      heroTag: 'driver-menu',
+                      onPressed: () => Scaffold.of(context).openEndDrawer(),
+                      child: const Icon(Icons.menu),
+                    ),
+                  ),
+                  const Spacer(),
+                  FloatingActionButton.small(
+                    heroTag: 'driver-refresh',
+                    onPressed: loading ? null : _load,
+                    child: const Icon(Icons.refresh),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: _DriverRidePanel(
+              driverReady: driver != null && vehicle != null,
+              canOperate: driverReady,
+              online: selectedStatus == 2,
+              streaming: locationStreaming,
+              liveStatus: liveStatus,
+              locationError: locationError,
+              offer: currentOffer,
+              activeTrip: activeTrip,
+              actualDistance: actualDistance,
+              actualDuration: actualDuration,
+              onToggleOnline: _toggleAvailability,
+              onAccept: currentOffer == null
+                  ? null
+                  : () => _acceptTrip(currentOffer!['tripId'].toString()),
+              onReject: currentOffer == null
+                  ? null
+                  : () => _rejectTrip(currentOffer!['tripId'].toString()),
+              onStart: activeTrip == null
+                  ? null
+                  : () => _startTrip(_id(activeTrip!)),
+              onFinish: activeTrip == null
+                  ? null
+                  : () => _finishTrip(_id(activeTrip!)),
+              canStart: _tripStatusLabel(
+                    activeTrip?['status'] ?? activeTrip?['Status'],
+                  ) ==
+                  'Accepted',
+              canFinish: _tripStatusLabel(
+                    activeTrip?['status'] ?? activeTrip?['Status'],
+                  ) ==
+                  'InProgress',
+            ),
+          ),
+          if (loading)
+            const Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: LinearProgressIndicator(minHeight: 3),
+            ),
+        ],
+      ),
     );
   }
 
@@ -875,6 +890,9 @@ class _DriverHomePageState extends State<DriverHomePage> {
         if (!exists) {
           availableTrips = [trip, ...availableTrips];
         }
+      } else {
+        availableTrips =
+            availableTrips.where((item) => _id(item) != _id(trip)).toList();
       }
 
       if (tripDriverId == driverId?.toLowerCase()) {
@@ -894,6 +912,14 @@ class _DriverHomePageState extends State<DriverHomePage> {
       return;
     }
 
+    if (!driverReady && selectedStatus == 2) {
+      setState(() {
+        selectedStatus = 1;
+        lastEvent = 'Ative o cadastro e o veiculo antes de ficar online.';
+      });
+      return;
+    }
+
     try {
       final data = await widget.session.api.patch(
         '/api/drivers/$driverId/status',
@@ -905,12 +931,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
             'Status atualizado para ${_driverStatusLabel(data['status'])}.';
       });
       if (selectedStatus == 2 && !locationStreaming) {
-        _toggleLocationStream();
+        _startLocationStream();
       }
       if (selectedStatus != 2 && locationStreaming) {
-        _toggleLocationStream();
+        _stopLocationStream('Envio automatico de localizacao parado.');
       }
-      await _loadTrips();
     } catch (ex) {
       setState(() => lastEvent = ex.toString());
     }
@@ -1036,10 +1061,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
         activeTrip = Map<String, dynamic>.from(data as Map);
         _applyRoutePoints(activeTrip!);
         currentOffer = null;
+        availableTrips =
+            availableTrips.where((trip) => _id(trip) != tripId).toList();
         lastEvent = _pretty('TripAccepted', activeTrip!);
       });
       _moveMapToVisiblePoint();
-      await _loadTrips();
     } catch (ex) {
       setState(() => lastEvent = ex.toString());
     }
@@ -1057,9 +1083,10 @@ class _DriverHomePageState extends State<DriverHomePage> {
       );
       setState(() {
         currentOffer = null;
+        availableTrips =
+            availableTrips.where((trip) => _id(trip) != tripId).toList();
         lastEvent = _pretty('DispatchRejected', data as Map<String, dynamic>);
       });
-      await _loadTrips();
     } catch (ex) {
       setState(() => lastEvent = ex.toString());
     }
@@ -1106,7 +1133,6 @@ class _DriverHomePageState extends State<DriverHomePage> {
         destinationPoint = null;
         lastEvent = _pretty('TripFinished', data as Map<String, dynamic>);
       });
-      await _loadTrips();
     } catch (ex) {
       setState(() => lastEvent = ex.toString());
     }
@@ -1137,9 +1163,18 @@ class _DriverHomePageState extends State<DriverHomePage> {
     final currentHeading = position.heading.isFinite && position.heading >= 0
         ? position.heading
         : _doubleValue(heading);
-    final signature = '$lat:$lng:$currentSpeed:$currentHeading';
+    final nextPoint = LatLng(lat, lng);
+    final movedMeters = lastSentLocationPoint == null
+        ? double.infinity
+        : const Distance().as(
+            LengthUnit.Meter,
+            lastSentLocationPoint!,
+            nextPoint,
+          );
+    final signature =
+        '${lat.toStringAsFixed(5)}:${lng.toStringAsFixed(5)}:${currentSpeed.toStringAsFixed(1)}:${currentHeading.toStringAsFixed(0)}';
 
-    if (signature == lastLocationSignature) {
+    if (signature == lastLocationSignature || movedMeters < 8) {
       return;
     }
 
@@ -1165,7 +1200,8 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
       setState(() {
         lastLocationSignature = signature;
-        driverPoint = LatLng(lat, lng);
+        lastSentLocationPoint = nextPoint;
+        driverPoint = nextPoint;
         latitude.text = lat.toStringAsFixed(6);
         longitude.text = lng.toStringAsFixed(6);
         speed.text = currentSpeed.toStringAsFixed(1);
@@ -1245,14 +1281,22 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
   void _toggleLocationStream() {
     if (locationStreaming) {
-      locationTimer?.cancel();
-      setState(() {
-        locationStreaming = false;
-        lastEvent = 'Envio automatico de localizacao parado.';
-      });
+      _stopLocationStream('Envio automatico de localizacao parado.');
       return;
     }
 
+    _startLocationStream();
+  }
+
+  void _startLocationStream() {
+    if (locationStreaming) {
+      return;
+    }
+
+    setState(() {
+      locationStreaming = true;
+      lastEvent = 'Envio automatico de localizacao iniciado.';
+    });
     locationTimer = Timer.periodic(
       const Duration(seconds: 5),
       (_) {
@@ -1264,9 +1308,14 @@ class _DriverHomePageState extends State<DriverHomePage> {
       },
     );
     _sendLocation();
+  }
+
+  void _stopLocationStream(String message) {
+    locationTimer?.cancel();
+    locationTimer = null;
     setState(() {
-      locationStreaming = true;
-      lastEvent = 'Envio automatico de localizacao iniciado.';
+      locationStreaming = false;
+      lastEvent = message;
     });
   }
 
@@ -1670,6 +1719,7 @@ class _VehicleRegistrationCard extends StatelessWidget {
 class _DriverRidePanel extends StatelessWidget {
   const _DriverRidePanel({
     required this.driverReady,
+    required this.canOperate,
     required this.online,
     required this.streaming,
     required this.liveStatus,
@@ -1688,6 +1738,7 @@ class _DriverRidePanel extends StatelessWidget {
   });
 
   final bool driverReady;
+  final bool canOperate;
   final bool online;
   final bool streaming;
   final String liveStatus;
@@ -1752,6 +1803,10 @@ class _DriverRidePanel extends StatelessWidget {
             const SizedBox(height: 14),
             if (!driverReady)
               const Text('Complete cadastro e veiculo no menu para operar.')
+            else if (!canOperate)
+              const Text(
+                'Ative o cadastro e o veiculo no menu para ficar online.',
+              )
             else if (hasOffer)
               _OfferSummary(offer: offer!)
             else if (hasTrip)
@@ -1806,7 +1861,7 @@ class _DriverRidePanel extends StatelessWidget {
               )
             else
               FilledButton(
-                onPressed: driverReady ? onToggleOnline : null,
+                onPressed: canOperate ? onToggleOnline : null,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(54),
                   textStyle: const TextStyle(
@@ -1825,6 +1880,10 @@ class _DriverRidePanel extends StatelessWidget {
   String get _headline {
     if (!driverReady) {
       return 'Prepare seu perfil';
+    }
+
+    if (!canOperate) {
+      return 'Ative seu cadastro';
     }
 
     if (offer != null) {

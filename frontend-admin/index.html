@@ -4,61 +4,140 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>RidePR Admin</title>
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
-    <header class="topbar">
-      <div>
-        <h1>RidePR Admin</h1>
-        <p>Painel operacional para acompanhar corridas em tempo real.</p>
+  <body class="auth-locked">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>RidePR</strong>
+        <span>Admin</span>
       </div>
-      <button id="clearTokenButton" type="button">Limpar token</button>
-    </header>
-
-    <nav class="side-tabs" aria-label="Navegacao do painel">
       <button class="tab-button active" data-panel-target="corridas" type="button">Corridas</button>
+      <button class="tab-button" data-panel-target="mapa" type="button">Mapa</button>
       <button class="tab-button" data-panel-target="motoristas" type="button">Motoristas</button>
       <button class="tab-button" data-panel-target="passageiros" type="button">Passageiros</button>
       <button class="tab-button" data-panel-target="veiculos" type="button">Veiculos</button>
-      <button class="tab-button" data-panel-target="mapa" type="button">Mapa</button>
-    </nav>
+      <button class="tab-button" data-panel-target="config" type="button">Config</button>
+    </aside>
 
-    <main class="layout">
-      <section class="panel" data-panel="corridas motoristas passageiros veiculos mapa">
-        <h2>Login admin</h2>
-        <label>
-          API baseUrl
-          <input id="baseUrl" value="http://45.185.199.173:8282" />
-        </label>
-        <label>
-          E-mail
-          <input id="email" value="admin@ridepr.test" autocomplete="username" />
-        </label>
-        <label>
-          Senha
-          <input id="password" value="Senha123!" type="password" autocomplete="current-password" />
-        </label>
-        <button id="loginButton" type="button">Login</button>
-        <p id="tokenStatus" class="muted">Sem token em memoria.</p>
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Corridas</h1>
+          <p id="liveStatus">SignalR desconectado.</p>
+        </div>
+        <div class="top-actions">
+          <button id="refreshAllButton" type="button">Atualizar</button>
+          <button id="clearTokenButton" type="button" class="ghost">Sair</button>
+        </div>
+      </header>
+
+      <section class="login-strip" data-panel="corridas mapa motoristas passageiros veiculos config">
+        <div class="login-title">
+          <strong>Entrar no RidePR Admin</strong>
+          <span>Faca login para acessar corridas, mapa e cadastros.</span>
+        </div>
+        <input id="baseUrl" value="http://45.185.199.173:8282" aria-label="API baseUrl" />
+        <input id="email" value="admin@ridepr.test" autocomplete="username" aria-label="E-mail" />
+        <input id="password" value="Senha123!" type="password" autocomplete="current-password" aria-label="Senha" />
+        <button id="loginButton" type="button">Entrar</button>
+        <span id="tokenStatus">Sem login</span>
       </section>
 
-      <section class="panel" data-panel="corridas motoristas passageiros veiculos">
-        <h2>Listagens</h2>
-        <div class="button-grid">
-          <button data-list="/api/users">Listar usuarios</button>
-          <button data-list="/api/drivers">Listar motoristas</button>
-          <button data-list="/api/vehicles">Listar veiculos</button>
-          <button data-list="/api/passengers">Listar passageiros</button>
-          <button data-list="/api/trips">Listar corridas</button>
+      <section class="dashboard" data-panel="corridas mapa motoristas passageiros veiculos">
+        <article class="metric">
+          <span>Corrida atual</span>
+          <strong id="currentTripStatus">Nenhuma</strong>
+        </article>
+        <article class="metric">
+          <span>TripId</span>
+          <strong id="currentTripId">-</strong>
+        </article>
+        <article class="metric">
+          <span>Motorista</span>
+          <strong id="currentDriverId">-</strong>
+        </article>
+      </section>
+
+      <section class="split" data-panel="corridas mapa">
+        <div class="panel flow-panel" data-panel="corridas">
+          <h2>Fluxo de teste</h2>
+          <div class="field-line">
+            <label>Passageiro</label>
+            <input id="passengerId" value="9e0d144e-6446-4f6a-a016-ac7cecd2d7b8" placeholder="GUID do passageiro" />
+          </div>
+          <div class="field-line">
+            <label>Origem</label>
+            <input id="origin" value="Praca da Se, Sao Paulo" />
+          </div>
+          <div class="field-line">
+            <label>Destino</label>
+            <input id="destination" value="Avenida Paulista, Sao Paulo" />
+          </div>
+          <div class="primary-flow">
+            <button id="createTripButton" type="button">1. Criar corrida</button>
+            <button id="requestDispatchButton" type="button">2. Solicitar motorista</button>
+            <button id="acceptTripButton" type="button">3. Aceitar</button>
+            <button id="startTripButton" type="button">4. Iniciar</button>
+            <button id="finishTripButton" type="button">5. Finalizar</button>
+          </div>
+          <button id="getTripButton" type="button" class="ghost wide-button">Buscar status</button>
+
+          <details>
+            <summary>Campos avancados</summary>
+            <div class="grid compact">
+              <label>TripId<input id="tripId" placeholder="preenchido ao criar corrida" /></label>
+              <label>DriverId<input id="driverId" value="d4ff8255-d3fe-4fb6-9fb9-2daaae8398c1" /></label>
+              <label>Lat origem<input id="originLatitude" value="-23.55052" /></label>
+              <label>Lng origem<input id="originLongitude" value="-46.63331" /></label>
+              <label>Lat destino<input id="destinationLatitude" value="-23.56141" /></label>
+              <label>Lng destino<input id="destinationLongitude" value="-46.65588" /></label>
+              <label>Raio km<input id="radiusKm" value="5" /></label>
+              <label>Km final<input id="actualDistanceKm" value="4.2" /></label>
+              <label>Min final<input id="actualDurationMinutes" value="18" /></label>
+            </div>
+          </details>
+        </div>
+
+        <div class="panel map-panel" data-panel="corridas mapa">
+          <div class="panel-title">
+            <h2>Mapa ao vivo</h2>
+            <span>Origem, destino e motorista</span>
+          </div>
+          <div id="map"></div>
+        </div>
+      </section>
+
+      <section class="panel wide" data-panel="corridas">
+        <div class="panel-title">
+          <h2>Corridas</h2>
+          <button data-list="/api/trips" type="button" class="ghost">Recarregar</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Origem</th>
+                <th>Destino</th>
+                <th>Passageiro</th>
+                <th>Motorista</th>
+                <th>Valor</th>
+              </tr>
+            </thead>
+            <tbody id="tripsTableBody">
+              <tr><td colspan="6">Clique em Recarregar ou crie uma corrida.</td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
       <section class="panel wide" data-panel="motoristas">
-        <h2>Motoristas e veiculos</h2>
+        <div class="panel-title">
+          <h2>Motoristas</h2>
+          <button data-list="/api/drivers" type="button" class="ghost">Recarregar</button>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -73,9 +152,40 @@
               </tr>
             </thead>
             <tbody id="driversTableBody">
-              <tr><td colspan="7">Clique em Listar motoristas.</td></tr>
+              <tr><td colspan="7">Clique em Recarregar.</td></tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="panel wide" data-panel="passageiros">
+        <div class="panel-title">
+          <h2>Passageiros</h2>
+          <button data-list="/api/passengers" type="button" class="ghost">Recarregar</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Telefone</th>
+                <th>CPF</th>
+                <th>Endereco</th>
+                <th>Cidade/UF</th>
+                <th>Ativo</th>
+              </tr>
+            </thead>
+            <tbody id="passengersTableBody">
+              <tr><td colspan="6">Clique em Recarregar.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel wide" data-panel="veiculos">
+        <div class="panel-title">
+          <h2>Veiculos</h2>
+          <button data-list="/api/vehicles" type="button" class="ghost">Recarregar</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -91,117 +201,20 @@
               </tr>
             </thead>
             <tbody id="vehiclesTableBody">
-              <tr><td colspan="7">Clique em Listar veiculos.</td></tr>
+              <tr><td colspan="7">Clique em Recarregar.</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <section class="panel wide" data-panel="passageiros">
-        <h2>Passageiros</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>Telefone</th>
-                <th>CPF</th>
-                <th>Endereco</th>
-                <th>Cidade/UF</th>
-                <th>Ativo</th>
-              </tr>
-            </thead>
-            <tbody id="passengersTableBody">
-              <tr><td colspan="6">Clique em Listar passageiros.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="panel wide" data-panel="corridas">
-        <h2>Criar corrida de teste</h2>
-        <div class="grid">
-          <label>
-            PassengerId
-            <input id="passengerId" value="9e0d144e-6446-4f6a-a016-ac7cecd2d7b8" placeholder="GUID do passageiro" />
-          </label>
-          <label>
-            TripId
-            <input id="tripId" placeholder="preenchido ao criar corrida" />
-          </label>
-          <label>
-            Origem
-            <input id="origin" value="Praca da Se, Sao Paulo" />
-          </label>
-          <label>
-            Destino
-            <input id="destination" value="Avenida Paulista, Sao Paulo" />
-          </label>
-          <label>
-            Lat origem
-            <input id="originLatitude" value="-23.55052" />
-          </label>
-          <label>
-            Lng origem
-            <input id="originLongitude" value="-46.63331" />
-          </label>
-          <label>
-            Lat destino
-            <input id="destinationLatitude" value="-23.56141" />
-          </label>
-          <label>
-            Lng destino
-            <input id="destinationLongitude" value="-46.65588" />
-          </label>
-        </div>
-        <div class="button-row">
-          <button id="createTripButton" type="button">Criar corrida</button>
-          <button id="getTripButton" type="button">Buscar status</button>
-        </div>
-      </section>
-
-      <section class="panel wide" data-panel="corridas">
-        <h2>Acoes de corrida</h2>
-        <div class="grid">
-          <label>
-            DriverId manual
-            <input id="driverId" value="d4ff8255-d3fe-4fb6-9fb9-2daaae8398c1" placeholder="GUID do motorista" />
-          </label>
-          <label>
-            Raio dispatch km
-            <input id="radiusKm" value="5" />
-          </label>
-          <label>
-            Distancia final km
-            <input id="actualDistanceKm" value="4.2" />
-          </label>
-          <label>
-            Duracao final min
-            <input id="actualDurationMinutes" value="18" />
-          </label>
-        </div>
-        <div class="button-row">
-          <button id="requestDispatchButton" type="button">Solicitar dispatch</button>
-          <button id="acceptTripButton" type="button">Aceitar</button>
-          <button id="startTripButton" type="button">Iniciar</button>
-          <button id="finishTripButton" type="button">Finalizar</button>
-        </div>
-      </section>
-
-      <section class="panel wide" data-panel="mapa">
-        <h2>Mapa em tempo real</h2>
-        <p id="liveStatus" class="muted">SignalR desconectado.</p>
-        <div id="map"></div>
-      </section>
-
-      <section class="panel response wide" data-panel="corridas motoristas passageiros veiculos mapa">
-        <h2>Resposta JSON</h2>
+      <section class="panel response wide" data-panel="config">
+        <h2>Debug</h2>
         <pre id="responseBox">Nenhuma chamada executada ainda.</pre>
       </section>
     </main>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
-    <script src="./app.js?v=202607051305"></script>
+    <script src="./app.js?v=202607051700"></script>
   </body>
 </html>

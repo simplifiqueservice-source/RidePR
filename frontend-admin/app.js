@@ -6,6 +6,7 @@ let destinationMarker = null;
 let driverMarker = null;
 let currentTrip = null;
 let activePanel = 'corridas';
+let tripsCache = [];
 
 const $ = (id) => document.getElementById(id);
 
@@ -42,7 +43,7 @@ function statusLabel(status) {
     Accepted: 'Aceita',
     InProgress: 'Em andamento',
     Finished: 'Finalizada',
-  }[normalized] ?? normalized || 'Desconhecido';
+  }[normalized] ?? (normalized || 'Desconhecido');
 }
 
 function eventLabel(eventName) {
@@ -60,6 +61,19 @@ function setLiveStatus(message) {
   $('liveStatus').textContent = message;
 }
 
+function setCurrentTripSummary(trip) {
+  if (!trip) {
+    $('currentTripStatus').textContent = 'Nenhuma';
+    $('currentTripId').textContent = '-';
+    $('currentDriverId').textContent = '-';
+    return;
+  }
+
+  $('currentTripStatus').textContent = statusLabel(field(trip, 'Status'));
+  $('currentTripId').textContent = cell(field(trip, 'Id'));
+  $('currentDriverId').textContent = cell(field(trip, 'DriverId'));
+}
+
 function setButtonStates() {
   const hasToken = Boolean(accessToken);
   const hasTripId = Boolean($('tripId').value.trim());
@@ -75,6 +89,15 @@ function setButtonStates() {
 
 function showPanel(panelName) {
   activePanel = panelName;
+  const labels = {
+    corridas: 'Corridas',
+    mapa: 'Mapa',
+    motoristas: 'Motoristas',
+    passageiros: 'Passageiros',
+    veiculos: 'Veiculos',
+    config: 'Config',
+  };
+  $('pageTitle').textContent = labels[panelName] ?? 'RidePR';
   document.querySelectorAll('[data-panel]').forEach((panel) => {
     const names = panel.dataset.panel.split(/\s+/);
     panel.classList.toggle('hidden', !names.includes(panelName));
@@ -146,9 +169,24 @@ function fitMap() {
   }
 }
 
+function fitMapOnce() {
+  if (!map || map._ridePrFitted) {
+    return;
+  }
+
+  fitMap();
+  map._ridePrFitted = true;
+}
+
 function updateTripMap(trip, eventName = 'Corrida atualizada') {
+  const previousTripId = field(currentTrip, 'Id');
+  const nextTripId = field(trip, 'Id');
   currentTrip = trip;
   initMap();
+
+  if (map && previousTripId !== nextTripId) {
+    map._ridePrFitted = false;
+  }
 
   const originLatitude = Number(field(trip, 'OriginLatitude'));
   const originLongitude = Number(field(trip, 'OriginLongitude'));
@@ -159,7 +197,8 @@ function updateTripMap(trip, eventName = 'Corrida atualizada') {
 
   originMarker = markerAt(originMarker, originLatitude, originLongitude, 'Origem');
   destinationMarker = markerAt(destinationMarker, destinationLatitude, destinationLongitude, 'Destino');
-  fitMap();
+  fitMapOnce();
+  setCurrentTripSummary(trip);
   setLiveStatus(`${eventLabel(eventName)}: ${status}${tripId ? ` (${tripId})` : ''}`);
   setButtonStates();
 }
@@ -172,7 +211,6 @@ function updateDriverLocation(location) {
   const driverId = field(location, 'DriverId') ?? $('driverId').value.trim();
 
   driverMarker = markerAt(driverMarker, latitude, longitude, `Motorista ${driverId}`);
-  fitMap();
   setLiveStatus(`${eventLabel('DriverLocationUpdated')}: ${driverId}`);
 }
 
@@ -231,8 +269,11 @@ async function login() {
 
   if (response?.ok && body?.accessToken) {
     accessToken = body.accessToken;
-    $('tokenStatus').textContent = 'Token admin salvo em memoria.';
+    $('tokenStatus').textContent = 'Conectado';
+    document.body.classList.remove('auth-locked');
+    showPanel('corridas');
     await connectRealtime();
+    await refreshActivePanel();
     setButtonStates();
   }
 }
@@ -255,6 +296,10 @@ async function list(path) {
   if (path.startsWith('/api/passengers')) {
     renderPassengers(body);
   }
+
+  if (path.startsWith('/api/trips')) {
+    renderTrips(body);
+  }
 }
 
 async function refreshTripsQuietly() {
@@ -262,7 +307,11 @@ async function refreshTripsQuietly() {
     return;
   }
 
-  await request('/api/trips');
+  const { response, body } = await request('/api/trips');
+
+  if (response?.ok) {
+    renderTrips(body);
+  }
 }
 
 function pageItems(body) {
@@ -338,6 +387,58 @@ function renderPassengers(body) {
   `).join('');
 }
 
+function renderTrips(body) {
+  const rows = pageItems(body);
+  tripsCache = rows;
+  const table = $('tripsTableBody');
+
+  if (!rows.length) {
+    table.innerHTML = '<tr><td colspan="6">Nenhuma corrida encontrada.</td></tr>';
+    return;
+  }
+
+  table.innerHTML = rows.map((trip) => `
+    <tr>
+      <td>${statusLabel(field(trip, 'Status'))}</td>
+      <td>${cell(field(trip, 'Origin'))}</td>
+      <td>${cell(field(trip, 'Destination'))}</td>
+      <td>${cell(field(trip, 'PassengerName') ?? field(trip, 'PassengerId'))}</td>
+      <td>${cell(field(trip, 'DriverId'))}</td>
+      <td>R$ ${cell(field(trip, 'Price'))}</td>
+    </tr>
+  `).join('');
+}
+
+function upsertTrip(trip) {
+  const tripId = cell(field(trip, 'Id'));
+  const next = tripsCache.filter((item) => cell(field(item, 'Id')) !== tripId);
+  renderTrips([trip, ...next]);
+}
+
+async function refreshActivePanel() {
+  if (!accessToken) {
+    show('LOCAL', 'Faca login antes de atualizar.');
+    return;
+  }
+
+  if (activePanel === 'motoristas') {
+    await list('/api/drivers');
+    return;
+  }
+
+  if (activePanel === 'passageiros') {
+    await list('/api/passengers');
+    return;
+  }
+
+  if (activePanel === 'veiculos') {
+    await list('/api/vehicles');
+    return;
+  }
+
+  await list('/api/trips');
+}
+
 function driverStatusLabel(status) {
   return {
     1: 'Offline',
@@ -378,6 +479,7 @@ async function createTrip() {
   if (response?.ok && body?.id) {
     $('tripId').value = body.id;
     updateTripMap(body, 'TripRequested');
+    upsertTrip(body);
     setButtonStates();
   }
 }
@@ -459,12 +561,23 @@ async function connectRealtime() {
     return;
   }
 
+  const hubUrl = `${baseUrl()}/driverHub`;
+
+  if (hubConnection && hubConnection.baseUrl === hubUrl) {
+    if (hubConnection.state === signalR.HubConnectionState.Connected) {
+      return;
+    }
+    await hubConnection.start();
+    setLiveStatus('SignalR conectado.');
+    return;
+  }
+
   if (hubConnection) {
     await hubConnection.stop();
   }
 
   hubConnection = new signalR.HubConnectionBuilder()
-    .withUrl(`${baseUrl()}/driverHub`, {
+    .withUrl(hubUrl, {
       accessTokenFactory: () => accessToken,
     })
     .withAutomaticReconnect()
@@ -472,8 +585,7 @@ async function connectRealtime() {
 
   const onTrip = (eventName) => (trip) => {
     updateTripMap(trip, eventName);
-    show('SIGNALR', { event: eventName, data: trip });
-    refreshTripsQuietly();
+    upsertTrip(trip);
   };
 
   hubConnection.on('TripRequested', onTrip('TripRequested'));
@@ -494,6 +606,7 @@ async function connectRealtime() {
   hubConnection.onclose(() => setLiveStatus('SignalR desconectado.'));
 
   await hubConnection.start();
+  hubConnection.baseUrl = hubUrl;
   setLiveStatus('SignalR conectado.');
 }
 
@@ -504,7 +617,9 @@ $('clearTokenButton').addEventListener('click', () => {
     hubConnection.stop();
     hubConnection = null;
   }
-    $('tokenStatus').textContent = 'Sem token em memoria.';
+  $('tokenStatus').textContent = 'Sem login';
+  document.body.classList.add('auth-locked');
+  setCurrentTripSummary(null);
   show(0, 'Token removido da memoria.');
   setLiveStatus('SignalR desconectado.');
   setButtonStates();
@@ -515,6 +630,7 @@ $('requestDispatchButton').addEventListener('click', requestDispatch);
 $('acceptTripButton').addEventListener('click', acceptTrip);
 $('startTripButton').addEventListener('click', startTrip);
 $('finishTripButton').addEventListener('click', finishTrip);
+$('refreshAllButton').addEventListener('click', refreshActivePanel);
 
 document.querySelectorAll('[data-list]').forEach((button) => {
   button.addEventListener('click', () => list(button.dataset.list));

@@ -238,6 +238,21 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   @override
   Widget build(BuildContext context) {
+    if (!loggedIn) {
+      return _PassengerAuthPage(
+        baseUrlController: baseUrlController,
+        nameController: nameController,
+        emailController: emailController,
+        passwordController: passwordController,
+        loading: loading,
+        lastResponse: lastResponse,
+        debugVisible: debugVisible,
+        onLogin: _login,
+        onRegister: _register,
+        onToggleDebug: () => setState(() => debugVisible = !debugVisible),
+      );
+    }
+
     return Scaffold(
       endDrawer: Drawer(
         child: SafeArea(
@@ -515,6 +530,12 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       if (result.success && trip != null && tripId != null) {
         tripIdController.text = tripId;
         _applyTrip(trip, eventName: 'TripRequested');
+        await api.post('/api/dispatch/request', {
+          'tripId': tripId,
+          'radiusKm': _doubleValue(radiusController),
+          'timeoutSeconds': 30,
+          'maxCandidates': 10,
+        });
       }
 
       return result;
@@ -978,6 +999,109 @@ class _LoginScreen extends StatelessWidget {
   }
 }
 
+class _PassengerAuthPage extends StatelessWidget {
+  const _PassengerAuthPage({
+    required this.baseUrlController,
+    required this.nameController,
+    required this.emailController,
+    required this.passwordController,
+    required this.loading,
+    required this.lastResponse,
+    required this.debugVisible,
+    required this.onLogin,
+    required this.onRegister,
+    required this.onToggleDebug,
+  });
+
+  final TextEditingController baseUrlController;
+  final TextEditingController nameController;
+  final TextEditingController emailController;
+  final TextEditingController passwordController;
+  final bool loading;
+  final String lastResponse;
+  final bool debugVisible;
+  final VoidCallback onLogin;
+  final VoidCallback onRegister;
+  final VoidCallback onToggleDebug;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.all(24),
+              children: [
+                Text(
+                  'RidePR',
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Entre ou crie sua conta para pedir corrida.',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 24),
+                _Input(
+                  controller: nameController,
+                  label: 'Nome para criar conta',
+                ),
+                _Input(controller: emailController, label: 'E-mail'),
+                _Input(
+                  controller: passwordController,
+                  label: 'Senha',
+                  obscureText: true,
+                ),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: loading ? null : onLogin,
+                  icon: const Icon(Icons.login),
+                  label: Text(loading ? 'Entrando...' : 'Entrar'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: loading ? null : onRegister,
+                  icon: const Icon(Icons.person_add),
+                  label: const Text('Criar conta'),
+                ),
+                TextButton(
+                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          'Recuperacao de senha ainda nao esta disponivel.'),
+                    ),
+                  ),
+                  child: const Text('Recuperar senha'),
+                ),
+                ExpansionTile(
+                  leading: const Icon(Icons.settings),
+                  title: const Text('Configuracoes'),
+                  children: [
+                    _Input(
+                      controller: baseUrlController,
+                      label: 'Endereco da API',
+                    ),
+                    TextButton.icon(
+                      onPressed: onToggleDebug,
+                      icon: const Icon(Icons.bug_report),
+                      label: const Text('Debug'),
+                    ),
+                  ],
+                ),
+                if (debugVisible) _ResponsePanel(response: lastResponse),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CreateTripScreen extends StatelessWidget {
   const _CreateTripScreen({
     required this.passengerCpfController,
@@ -1037,7 +1161,6 @@ class _CreateTripScreen extends StatelessWidget {
           title: const Text('Meu cadastro'),
           initiallyExpanded: !passengerLoaded,
           children: [
-            _Input(controller: passengerIdController, label: 'PassengerId'),
             _Input(controller: passengerCpfController, label: 'CPF'),
             _Input(
               controller: passengerBirthDateController,
@@ -1071,12 +1194,13 @@ class _CreateTripScreen extends StatelessWidget {
             ),
           ],
         ),
-        _Input(controller: tripIdController, label: 'Codigo da corrida'),
         _Input(controller: originController, label: 'Origem'),
         _Input(controller: destinationController, label: 'Destino'),
         ExpansionTile(
-          title: const Text('Coordenadas'),
+          title: const Text('Avancado'),
           children: [
+            _Input(controller: passengerIdController, label: 'Codigo do passageiro'),
+            _Input(controller: tripIdController, label: 'Codigo da corrida'),
             Row(
               children: [
                 Expanded(
