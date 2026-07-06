@@ -11,6 +11,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:signalr_netcore/signalr_client.dart' hide ConnectionState;
 
 const defaultApiBaseUrl = 'http://45.185.199.173:8282';
+const rideDark = Color(0xff07111f);
+const ridePanel = Color(0xff101828);
+const rideGold = Color(0xffffc928);
+const rideGreen = Color(0xff16a34a);
+const rideRed = Color(0xffdc2626);
+const rideMuted = Color(0xff98a2b3);
 
 void main() {
   runApp(const RidePrDriverApp());
@@ -21,6 +27,36 @@ class AppConfig {
     'RIDEPR_API_URL',
     defaultValue: defaultApiBaseUrl,
   );
+}
+
+class _RidePrLogo extends StatelessWidget {
+  const _RidePrLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          height: 46,
+          width: 46,
+          decoration: BoxDecoration(
+            color: rideGold,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.local_taxi, color: rideDark, size: 28),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          'RidePR',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: rideDark,
+                fontWeight: FontWeight.w900,
+              ),
+        ),
+      ],
+    );
+  }
 }
 
 class RidePrDriverApp extends StatefulWidget {
@@ -46,8 +82,40 @@ class _RidePrDriverAppState extends State<RidePrDriverApp> {
       title: 'RidePR Motorista',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff1d4ed8)),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: rideGold,
+          primary: rideGold,
+          secondary: rideGreen,
+          error: rideRed,
+        ),
+        scaffoldBackgroundColor: rideDark,
         useMaterial3: true,
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: rideGold,
+            foregroundColor: rideDark,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: rideGold,
+            side: const BorderSide(color: rideGold, width: 1.4),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xfff2f4f7),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+        ),
       ),
       home: loading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
@@ -261,93 +329,107 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: rideDark,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
-            child: ListView(
-              shrinkWrap: true,
-              padding: const EdgeInsets.all(24),
-              children: [
-                Text(
-                  'RidePR',
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  mode == 'register'
-                      ? 'Crie sua conta de motorista'
-                      : mode == 'login'
-                          ? 'Entre para receber corridas'
-                          : 'Dirija com um app simples e profissional',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 28),
-                if (mode == 'register') _Input(controller: name, label: 'Nome'),
-                if (mode != 'entry') _Input(controller: email, label: 'E-mail'),
-                if (mode != 'entry')
-                  _Input(
-                    controller: password,
-                    label: 'Senha',
-                    obscureText: true,
+            child: Container(
+              margin: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x66000000),
+                    blurRadius: 28,
+                    offset: Offset(0, 18),
                   ),
-                if (mode == 'register')
-                  _Input(
-                    controller: confirmPassword,
-                    label: 'Confirmar senha',
-                    obscureText: true,
-                  ),
-                if (error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(error!, style: const TextStyle(color: Colors.red)),
                 ],
-                const SizedBox(height: 12),
-                if (mode == 'entry') ...[
-                  FilledButton.icon(
-                    onPressed: () => setState(() => mode = 'login'),
-                    icon: const Icon(Icons.login),
-                    label: const Text('Entrar'),
+              ),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  const _RidePrLogo(),
+                  const SizedBox(height: 14),
+                  Text(
+                    mode == 'register'
+                        ? 'Crie sua conta de motorista'
+                        : mode == 'login'
+                            ? 'Entre para receber corridas'
+                            : 'Dirija com um app simples e profissional',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: const Color(0xff667085),
+                        ),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: () => setState(() => mode = 'register'),
-                    icon: const Icon(Icons.person_add),
-                    label: const Text('Criar conta'),
-                  ),
-                ] else ...[
-                  FilledButton.icon(
-                    onPressed: loading
-                        ? null
-                        : mode == 'register'
-                            ? _register
-                            : _submit,
-                    icon: Icon(
-                        mode == 'register' ? Icons.person_add : Icons.login),
-                    label: Text(
-                      loading
-                          ? 'Aguarde...'
+                  const SizedBox(height: 28),
+                  if (mode == 'register')
+                    _Input(controller: name, label: 'Nome'),
+                  if (mode != 'entry')
+                    _Input(controller: email, label: 'E-mail'),
+                  if (mode != 'entry')
+                    _Input(
+                      controller: password,
+                      label: 'Senha',
+                      obscureText: true,
+                    ),
+                  if (mode == 'register')
+                    _Input(
+                      controller: confirmPassword,
+                      label: 'Confirmar senha',
+                      obscureText: true,
+                    ),
+                  if (error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(error!, style: const TextStyle(color: Colors.red)),
+                  ],
+                  const SizedBox(height: 12),
+                  if (mode == 'entry') ...[
+                    FilledButton.icon(
+                      onPressed: () => setState(() => mode = 'login'),
+                      icon: const Icon(Icons.login),
+                      label: const Text('Entrar'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => setState(() => mode = 'register'),
+                      icon: const Icon(Icons.person_add),
+                      label: const Text('Criar conta'),
+                    ),
+                  ] else ...[
+                    FilledButton.icon(
+                      onPressed: loading
+                          ? null
                           : mode == 'register'
-                              ? 'Criar conta'
-                              : 'Entrar',
+                              ? _register
+                              : _submit,
+                      icon: Icon(
+                          mode == 'register' ? Icons.person_add : Icons.login),
+                      label: Text(
+                        loading
+                            ? 'Aguarde...'
+                            : mode == 'register'
+                                ? 'Criar conta'
+                                : 'Entrar',
+                      ),
                     ),
-                  ),
+                    TextButton(
+                      onPressed:
+                          loading ? null : () => setState(() => mode = 'entry'),
+                      child: const Text('Voltar'),
+                    ),
+                  ],
                   TextButton(
-                    onPressed:
-                        loading ? null : () => setState(() => mode = 'entry'),
-                    child: const Text('Voltar'),
+                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            'Recuperacao de senha ainda nao esta disponivel.'),
+                      ),
+                    ),
+                    child: const Text('Recuperar senha'),
                   ),
                 ],
-                TextButton(
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                          'Recuperacao de senha ainda nao esta disponivel.'),
-                    ),
-                  ),
-                  child: const Text('Recuperar senha'),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -587,10 +669,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(
-                'RidePR Motorista',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
+              const _RidePrLogo(),
               const SizedBox(height: 12),
               _HeaderCard(
                 title: widget.session.name ?? 'Motorista',
@@ -653,23 +732,6 @@ class _DriverHomePageState extends State<DriverHomePage> {
                 },
               ),
               const SizedBox(height: 12),
-              ExpansionTile(
-                leading: const Icon(Icons.settings),
-                title: const Text('Suporte'),
-                children: [
-                  _LocationCard(
-                    latitude: latitude,
-                    longitude: longitude,
-                    speed: speed,
-                    heading: heading,
-                    streaming: locationStreaming,
-                    onSend: _sendLocation,
-                    onToggleStream: _toggleLocationStream,
-                  ),
-                  _DebugCard(text: lastEvent),
-                ],
-              ),
-              const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: _logout,
                 icon: const Icon(Icons.logout),
@@ -705,6 +767,8 @@ class _DriverHomePageState extends State<DriverHomePage> {
                   Builder(
                     builder: (context) => FloatingActionButton.small(
                       heroTag: 'driver-menu',
+                      backgroundColor: rideDark,
+                      foregroundColor: Colors.white,
                       onPressed: () => Scaffold.of(context).openEndDrawer(),
                       child: const Icon(Icons.menu),
                     ),
@@ -712,6 +776,8 @@ class _DriverHomePageState extends State<DriverHomePage> {
                   const Spacer(),
                   FloatingActionButton.small(
                     heroTag: 'driver-refresh',
+                    backgroundColor: rideGold,
+                    foregroundColor: rideDark,
                     onPressed: loading ? null : _load,
                     child: const Icon(Icons.refresh),
                   ),
@@ -1424,15 +1490,6 @@ class _DriverHomePageState extends State<DriverHomePage> {
     }
 
     return message.replaceFirst('Exception: ', '');
-  }
-
-  void _toggleLocationStream() {
-    if (locationStreaming) {
-      _stopLocationStream('Envio automatico de localizacao parado.');
-      return;
-    }
-
-    _startLocationStream();
   }
 
   void _startLocationStream() {
@@ -2288,8 +2345,8 @@ class _DriverRidePanel extends StatelessWidget {
         margin: const EdgeInsets.all(12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          color: ridePanel,
+          borderRadius: BorderRadius.circular(8),
           boxShadow: const [
             BoxShadow(
               color: Colors.black26,
@@ -2306,7 +2363,7 @@ class _DriverRidePanel extends StatelessWidget {
               children: [
                 Icon(
                   online ? Icons.radio_button_checked : Icons.radio_button_off,
-                  color: online ? Colors.green : Colors.black54,
+                  color: online ? rideGreen : rideGold,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -2314,20 +2371,30 @@ class _DriverRidePanel extends StatelessWidget {
                     _headline,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w800,
+                          color: Colors.white,
                         ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            Text(locationError ??
-                (streaming ? 'Localizacao automatica ativa' : liveStatus)),
+            Text(
+              locationError ??
+                  (streaming ? 'Localizacao automatica ativa' : liveStatus),
+              style: TextStyle(
+                color: locationError == null ? rideMuted : rideRed,
+              ),
+            ),
             const SizedBox(height: 14),
             if (!driverReady)
-              const Text('Complete cadastro e veiculo no menu para operar.')
+              const Text(
+                'Complete cadastro e veiculo no menu para operar.',
+                style: TextStyle(color: Colors.white),
+              )
             else if (!canOperate)
               const Text(
                 'Ative o cadastro e o veiculo no menu para ficar online.',
+                style: TextStyle(color: Colors.white),
               )
             else if (hasOffer)
               _OfferSummary(offer: offer!)
@@ -2342,6 +2409,7 @@ class _DriverRidePanel extends StatelessWidget {
                 online
                     ? 'Aguardando uma corrida perto de voce.'
                     : 'Fique online para receber corridas.',
+                style: const TextStyle(color: Colors.white),
               ),
             const SizedBox(height: 14),
             if (hasOffer)
@@ -2432,13 +2500,25 @@ class _OfferSummary extends StatelessWidget {
       children: [
         Text(
           '${offer['origin'] ?? offer['Origin']}',
-          style: Theme.of(context).textTheme.titleMedium,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
         ),
         const SizedBox(height: 4),
-        Text('${offer['destination'] ?? offer['Destination']}'),
+        Text(
+          '${offer['destination'] ?? offer['Destination']}',
+          style: const TextStyle(color: Colors.white),
+        ),
         const SizedBox(height: 8),
-        Text('Ate a origem: ${offer['distanceKm'] ?? '-'} km'),
-        Text('Tempo estimado: ${offer['etaMinutes'] ?? '-'} min'),
+        Text(
+          'Ate a origem: ${offer['distanceKm'] ?? '-'} km',
+          style: const TextStyle(color: rideMuted),
+        ),
+        Text(
+          'Tempo estimado: ${offer['etaMinutes'] ?? '-'} min',
+          style: const TextStyle(color: rideMuted),
+        ),
       ],
     );
   }
@@ -2462,10 +2542,16 @@ class _TripSummary extends StatelessWidget {
       children: [
         Text(
           '${trip['origin'] ?? trip['Origin']}',
-          style: Theme.of(context).textTheme.titleMedium,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
         ),
         const SizedBox(height: 4),
-        Text('${trip['destination'] ?? trip['Destination']}'),
+        Text(
+          '${trip['destination'] ?? trip['Destination']}',
+          style: const TextStyle(color: Colors.white),
+        ),
         const SizedBox(height: 10),
         Row(
           children: [
@@ -2479,78 +2565,6 @@ class _TripSummary extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _LocationCard extends StatelessWidget {
-  const _LocationCard({
-    required this.latitude,
-    required this.longitude,
-    required this.speed,
-    required this.heading,
-    required this.streaming,
-    required this.onSend,
-    required this.onToggleStream,
-  });
-
-  final TextEditingController latitude;
-  final TextEditingController longitude;
-  final TextEditingController speed;
-  final TextEditingController heading;
-  final bool streaming;
-  final VoidCallback onSend;
-  final VoidCallback onToggleStream;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SectionCard(
-      title: 'Localizacao',
-      child: Column(
-        children: [
-          Text(
-            streaming
-                ? 'Enviando localizacao automaticamente.'
-                : 'Ao ficar online, o app envia a localizacao automaticamente.',
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _Input(controller: latitude, label: 'Latitude')),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: _Input(controller: longitude, label: 'Longitude')),
-            ],
-          ),
-          Row(
-            children: [
-              Expanded(child: _Input(controller: speed, label: 'Velocidade')),
-              const SizedBox(width: 12),
-              Expanded(child: _Input(controller: heading, label: 'Direcao')),
-            ],
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: onSend,
-                  icon: const Icon(Icons.my_location),
-                  label: const Text('Enviar localizacao'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onToggleStream,
-                  icon: Icon(streaming ? Icons.pause : Icons.play_arrow),
-                  label:
-                      Text(streaming ? 'Parar automatico' : 'Ligar automatico'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }
@@ -2616,45 +2630,6 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-class _DebugCard extends StatelessWidget {
-  const _DebugCard({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ExpansionTile(
-        leading: const Icon(Icons.bug_report),
-        title: const Text('Debug'),
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: const Color(0xff101828),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(12),
-                scrollDirection: Axis.horizontal,
-                child: SelectableText(
-                  text,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-}
-
 class _Input extends StatelessWidget {
   const _Input({
     required this.controller,
@@ -2674,7 +2649,10 @@ class _Input extends StatelessWidget {
         controller: controller,
         obscureText: obscureText,
         decoration: InputDecoration(
-          border: const OutlineInputBorder(),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
           labelText: label,
         ),
       ),

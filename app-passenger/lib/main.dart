@@ -10,6 +10,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:signalr_netcore/signalr_client.dart' hide ConnectionState;
 
 const defaultApiBaseUrl = 'http://45.185.199.173:8282';
+const rideDark = Color(0xff07111f);
+const ridePanel = Color(0xff101828);
+const rideGold = Color(0xffffc928);
+const rideGreen = Color(0xff16a34a);
+const rideRed = Color(0xffdc2626);
+const rideSurface = Color(0xffffffff);
+const rideMuted = Color(0xff667085);
 
 class AppConfig {
   static const apiBaseUrl = String.fromEnvironment(
@@ -31,8 +38,40 @@ class RidePrMvpTestApp extends StatelessWidget {
       title: 'RidePR Passageiro',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff2563eb)),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: rideGold,
+          primary: rideGold,
+          secondary: rideGreen,
+          error: rideRed,
+        ),
+        scaffoldBackgroundColor: const Color(0xfff4f6f8),
         useMaterial3: true,
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: rideGold,
+            foregroundColor: rideDark,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: rideDark,
+            side: const BorderSide(color: rideGold, width: 1.4),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xfff2f4f7),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+        ),
       ),
       home: const MvpTestHome(),
     );
@@ -129,6 +168,36 @@ class ApiResult {
     final formatted = payload is String ? payload : encoder.convert(payload);
 
     return 'HTTP $statusCode\n$formatted';
+  }
+}
+
+class _RidePrLogo extends StatelessWidget {
+  const _RidePrLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          height: 46,
+          width: 46,
+          decoration: BoxDecoration(
+            color: rideGold,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.local_taxi, color: rideDark, size: 28),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          'RidePR',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: rideDark,
+                fontWeight: FontWeight.w900,
+              ),
+        ),
+      ],
+    );
   }
 }
 
@@ -338,7 +407,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text('RidePR', style: Theme.of(context).textTheme.headlineSmall),
+              const _RidePrLogo(),
               const SizedBox(height: 16),
               ListTile(
                 leading: const Icon(Icons.person),
@@ -358,19 +427,6 @@ class _MvpTestHomeState extends State<MvpTestHome> {
                   _openHistory();
                 },
               ),
-              ExpansionTile(
-                leading: const Icon(Icons.settings),
-                title: const Text('Configuracoes'),
-                children: [
-                  SwitchListTile(
-                    value: debugVisible,
-                    onChanged: (value) => setState(() => debugVisible = value),
-                    title: const Text('Suporte tecnico'),
-                    secondary: const Icon(Icons.bug_report),
-                  ),
-                ],
-              ),
-              if (debugVisible) _ResponsePanel(response: lastResponse),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () => _clearSession(),
@@ -407,6 +463,8 @@ class _MvpTestHomeState extends State<MvpTestHome> {
                   Builder(
                     builder: (context) => FloatingActionButton.small(
                       heroTag: 'menu',
+                      backgroundColor: rideDark,
+                      foregroundColor: Colors.white,
                       onPressed: () => Scaffold.of(context).openEndDrawer(),
                       child: const Icon(Icons.menu),
                     ),
@@ -414,7 +472,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
                   const Spacer(),
                   DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: rideDark,
                       borderRadius: BorderRadius.circular(999),
                       boxShadow: const [
                         BoxShadow(color: Colors.black26, blurRadius: 12),
@@ -431,10 +489,13 @@ class _MvpTestHomeState extends State<MvpTestHome> {
                           Icon(
                             loggedIn ? Icons.check_circle : Icons.login,
                             size: 18,
-                            color: loggedIn ? Colors.green : Colors.black54,
+                            color: loggedIn ? rideGreen : rideGold,
                           ),
                           const SizedBox(width: 6),
-                          Text(loggedIn ? 'Conectado' : 'Entrar'),
+                          Text(
+                            loggedIn ? 'Conectado' : 'Entrar',
+                            style: const TextStyle(color: Colors.white),
+                          ),
                         ],
                       ),
                     ),
@@ -562,8 +623,6 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   }
 
   Future<void> _restoreSession() async {
-    final prefs = await SharedPreferences.getInstance();
-
     baseUrlController.text = AppConfig.apiBaseUrl;
     api.baseUrl = baseUrlController.text;
 
@@ -1215,106 +1274,106 @@ class _PassengerAuthPageState extends State<_PassengerAuthPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: rideDark,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 430),
-            child: ListView(
-              shrinkWrap: true,
-              padding: const EdgeInsets.all(24),
-              children: [
-                Text(
-                  'RidePR',
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  mode == 'register'
-                      ? 'Crie sua conta de passageiro.'
-                      : mode == 'login'
-                          ? 'Entre para pedir sua corrida.'
-                          : 'Peça corridas de forma simples.',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 24),
-                if (mode == 'register')
-                  _Input(
-                    controller: nameController,
-                    label: 'Nome',
-                  ),
-                if (mode != 'entry')
-                  _Input(controller: emailController, label: 'E-mail'),
-                if (mode != 'entry')
-                  _Input(
-                    controller: passwordController,
-                    label: 'Senha',
-                    obscureText: true,
-                  ),
-                if (mode == 'register')
-                  _Input(
-                    controller: confirmPasswordController,
-                    label: 'Confirmar senha',
-                    obscureText: true,
-                  ),
-                const SizedBox(height: 8),
-                if (mode == 'entry') ...[
-                  FilledButton.icon(
-                    onPressed: () => setState(() => mode = 'login'),
-                    icon: const Icon(Icons.login),
-                    label: const Text('Entrar'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => setState(() => mode = 'register'),
-                    icon: const Icon(Icons.person_add),
-                    label: const Text('Criar conta'),
-                  ),
-                ] else ...[
-                  FilledButton.icon(
-                    onPressed: loading
-                        ? null
-                        : mode == 'register'
-                            ? onRegister
-                            : onLogin,
-                    icon: Icon(
-                        mode == 'register' ? Icons.person_add : Icons.login),
-                    label: Text(
-                      loading
-                          ? 'Aguarde...'
-                          : mode == 'register'
-                              ? 'Criar conta'
-                              : 'Entrar',
-                    ),
-                  ),
-                  TextButton(
-                    onPressed:
-                        loading ? null : () => setState(() => mode = 'entry'),
-                    child: const Text('Voltar'),
+            child: Container(
+              margin: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: rideSurface,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x66000000),
+                    blurRadius: 28,
+                    offset: Offset(0, 18),
                   ),
                 ],
-                TextButton(
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                          'Recuperacao de senha ainda nao esta disponivel.'),
-                    ),
+              ),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  const _RidePrLogo(),
+                  const SizedBox(height: 14),
+                  Text(
+                    mode == 'register'
+                        ? 'Crie sua conta de passageiro.'
+                        : mode == 'login'
+                            ? 'Entre para pedir sua corrida.'
+                            : 'Peça corridas de forma simples.',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: rideMuted,
+                        ),
                   ),
-                  child: const Text('Recuperar senha'),
-                ),
-                ExpansionTile(
-                  leading: const Icon(Icons.settings),
-                  title: const Text('Configuracoes'),
-                  children: [
-                    TextButton.icon(
-                      onPressed: onToggleDebug,
-                      icon: const Icon(Icons.bug_report),
-                      label: const Text('Debug'),
+                  const SizedBox(height: 24),
+                  if (mode == 'register')
+                    _Input(
+                      controller: nameController,
+                      label: 'Nome',
+                    ),
+                  if (mode != 'entry')
+                    _Input(controller: emailController, label: 'E-mail'),
+                  if (mode != 'entry')
+                    _Input(
+                      controller: passwordController,
+                      label: 'Senha',
+                      obscureText: true,
+                    ),
+                  if (mode == 'register')
+                    _Input(
+                      controller: confirmPasswordController,
+                      label: 'Confirmar senha',
+                      obscureText: true,
+                    ),
+                  const SizedBox(height: 8),
+                  if (mode == 'entry') ...[
+                    FilledButton.icon(
+                      onPressed: () => setState(() => mode = 'login'),
+                      icon: const Icon(Icons.login),
+                      label: const Text('Entrar'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => setState(() => mode = 'register'),
+                      icon: const Icon(Icons.person_add),
+                      label: const Text('Criar conta'),
+                    ),
+                  ] else ...[
+                    FilledButton.icon(
+                      onPressed: loading
+                          ? null
+                          : mode == 'register'
+                              ? onRegister
+                              : onLogin,
+                      icon: Icon(
+                          mode == 'register' ? Icons.person_add : Icons.login),
+                      label: Text(
+                        loading
+                            ? 'Aguarde...'
+                            : mode == 'register'
+                                ? 'Criar conta'
+                                : 'Entrar',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed:
+                          loading ? null : () => setState(() => mode = 'entry'),
+                      child: const Text('Voltar'),
                     ),
                   ],
-                ),
-                if (debugVisible) _ResponsePanel(response: lastResponse),
-              ],
+                  TextButton(
+                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            'Recuperacao de senha ainda nao esta disponivel.'),
+                      ),
+                    ),
+                    child: const Text('Recuperar senha'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1700,8 +1759,8 @@ class _PassengerRideCard extends StatelessWidget {
         margin: const EdgeInsets.all(12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          color: rideSurface,
+          borderRadius: BorderRadius.circular(8),
           boxShadow: const [
             BoxShadow(
               color: Colors.black26,
@@ -1716,13 +1775,22 @@ class _PassengerRideCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.local_taxi),
+                Container(
+                  height: 34,
+                  width: 34,
+                  decoration: BoxDecoration(
+                    color: rideGold,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.local_taxi, color: rideDark),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _headline,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w800,
+                          color: rideDark,
                         ),
                   ),
                 ),
@@ -1786,7 +1854,9 @@ class _PassengerRideCard extends StatelessWidget {
               liveStatus.toLowerCase().contains('conectado')
                   ? 'Atualizacao automatica ativa'
                   : 'Atualizando status da corrida',
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: rideMuted,
+                  ),
             ),
             const SizedBox(height: 14),
             FilledButton(
@@ -1862,7 +1932,7 @@ class _RideInput extends StatelessWidget {
         filled: true,
         fillColor: const Color(0xfff2f4f7),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,
         ),
         prefixIcon: Icon(icon),
@@ -1911,43 +1981,11 @@ class _Input extends StatelessWidget {
       controller: controller,
       obscureText: obscureText,
       decoration: InputDecoration(
-        border: const OutlineInputBorder(),
-        labelText: label,
-      ),
-    );
-  }
-}
-
-class _ResponsePanel extends StatelessWidget {
-  const _ResponsePanel({required this.response});
-
-  final String response;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      elevation: 12,
-      child: SizedBox(
-        height: 168,
-        width: double.infinity,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border.all(color: Theme.of(context).dividerColor),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(10),
-              child: SelectableText(
-                response,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontFamily: 'monospace',
-                    ),
-              ),
-            ),
-          ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide.none,
         ),
+        labelText: label,
       ),
     );
   }

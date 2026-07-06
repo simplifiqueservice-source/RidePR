@@ -1,6 +1,6 @@
 # RidePR final product test guide
 
-## Validacao obrigatoria
+## Build e validacao
 
 Execute na raiz do repositorio:
 
@@ -13,90 +13,57 @@ cd app-passenger; flutter build apk --debug
 cd ..\app-driver; flutter build apk --debug
 ```
 
-## Subir API e painel
+## Visual aprovado
 
-```powershell
-docker compose up -d
-dotnet run --project backend\RidePR.Api\RidePR.Api.csproj --launch-profile http
-```
+- Admin com fundo superior e menu lateral escuros, logo RidePR amarelo, botoes amarelos para acao principal, verde para sucesso e vermelho para acao destrutiva.
+- Passageiro com login escuro, card principal branco, logo RidePR amarelo e fluxo direto para pedir corrida.
+- Motorista com login escuro, painel de operacao escuro, destaque amarelo para ficar online/aceitar e informacoes de corrida em linguagem humana.
+- Nenhum app ou painel deve mostrar endereco da API, GUID, TripId, DriverId ou dados tecnicos como informacao principal.
+- Dados tecnicos, quando necessarios, devem ficar apenas em area tecnica escondida.
 
-A API deve responder em:
+## Admin
 
-```text
-http://localhost:8282
-http://45.185.199.173:8282
-```
+1. Abrir o painel em `/painel` ou pelo servidor estatico local.
+2. Entrar com admin valido.
+3. Confirmar que nao aparece campo editavel de API.
+4. Em `Corridas`, filtrar por status e filial.
+5. Confirmar que a tabela mostra passageiro, motorista, origem, destino e status em portugues.
+6. Testar `Ver detalhes`, `Cancelar` e `Finalizar`.
+7. Em `Passageiros`, testar aprovar, bloquear e excluir quando nao houver historico.
+8. Em `Motoristas`, testar aprovar, bloquear e excluir quando nao houver historico.
+9. Em `Veiculos`, testar aprovar, ativar/desativar e excluir quando nao houver historico.
+10. Em `Admins`, criar, editar, ativar/desativar e vincular filial.
+11. Em `Filiais`, criar, editar, ativar/desativar e definir tarifas.
+12. Confirmar que acoes criticas pedem confirmacao.
 
-Para abrir o painel:
-
-```powershell
-cd frontend-admin
-python -m http.server 5173
-```
-
-Abrir `http://localhost:5173` e manter a BaseUrl padrao `http://45.185.199.173:8282`.
-
-## Fluxo passageiro
+## Passageiro
 
 1. Abrir `app-passenger`.
-2. Escolher `Entrar` ou `Criar conta`.
-3. Completar perfil quando solicitado.
-4. Permitir localizacao.
-5. Ver o mapa com origem real.
-6. Informar destino pela busca.
-7. Tocar em `Pedir corrida`.
-8. Conferir status `Procurando motorista`.
-9. Apos aceite, acompanhar status e marcador do motorista.
-10. Conferir `Corrida em andamento`.
-11. Conferir `Corrida finalizada`.
+2. Confirmar que a primeira tela e login/criar conta.
+3. Entrar ou criar conta.
+4. Completar cadastro se solicitado.
+5. Permitir localizacao.
+6. Confirmar mapa ativo, card branco inferior e botoes amarelos.
+7. Informar origem/destino legiveis.
+8. Pedir corrida.
+9. Confirmar status em portugues e atualizacao automatica por SignalR.
 
-## Fluxo motorista
+## Motorista
 
 1. Abrir `app-driver`.
-2. Escolher `Entrar` ou `Criar conta`.
-3. Completar cadastro do motorista.
-4. Completar cadastro do veiculo.
+2. Confirmar que a primeira tela e login/criar conta.
+3. Entrar ou criar conta.
+4. Completar cadastro de motorista e veiculo.
 5. Ativar motorista e veiculo.
-6. Tocar em `Ficar online`.
-7. Permitir GPS real.
-8. Solicitar corrida pelo passageiro.
-9. Conferir popup `Nova corrida` com origem, destino e valor.
-10. Aceitar ou recusar.
-11. Se aceitar, tocar em `Iniciar corrida`.
-12. Confirmar envio de localizacao a cada 5 segundos somente online/em corrida.
-13. Tocar em `Finalizar corrida`.
+6. Ficar online.
+7. Receber corrida como oferta atual, sem lista antiga de corridas.
+8. Aceitar, iniciar e finalizar corrida.
+9. Confirmar painel escuro, status legivel e sem IDs tecnicos.
 
-## Fluxo admin principal
+## Evidencias esperadas
 
-1. Entrar no painel.
-2. Abrir `Filiais` e criar/ativar filial.
-3. Abrir `Tarifas` e cadastrar tarifa da filial.
-4. Abrir `Admins` e criar admin de filial vinculado.
-5. Conferir abas `Dashboard`, `Corridas`, `Motoristas`, `Passageiros`, `Veiculos`, `Mapa`, `Admins`, `Filiais`, `Tarifas` e `Config`.
-6. Criar corrida no passageiro e aceitar no motorista.
-7. Conferir atualizacao automatica por SignalR.
-8. Conferir origem, destino e motorista no mapa sem reset a cada localizacao.
-
-## Fluxo admin filial
-
-1. Entrar com admin filial.
-2. Conferir que filiais, admins e tarifas ficam limitados a filial vinculada.
-3. Conferir corridas, motoristas e passageiros da filial.
-4. Validar status em portugues e dados legiveis.
-
-## Checklist final
-
-- Apps nunca pulam login automaticamente.
-- Primeira tela mostra apenas entrada clara: `Entrar` ou `Criar conta`.
-- Debug fica fora do fluxo principal.
-- Passageiro cai no fluxo de pedir corrida apos perfil completo.
-- Motorista so opera depois de motorista e veiculo completos e ativos.
-- Dispatch cria oferta e mostra popup no motorista.
-- SignalR conecta uma vez por sessao.
-- GPS fixo nao e usado como localizacao principal.
-- Localizacao duplicada nao e enviada quando o motorista nao se move.
-- Painel admin persiste login no navegador.
-- Filiais, admins de filial e tarifas por filial funcionam.
-- APKs debug sao gerados em:
-  - `app-passenger\build\app\outputs\flutter-apk\app-debug.apk`
-  - `app-driver\build\app\outputs\flutter-apk\app-debug.apk`
+- `app-passenger\build\app\outputs\flutter-apk\app-debug.apk`
+- `app-driver\build\app\outputs\flutter-apk\app-debug.apk`
+- Build .NET sem erros.
+- Testes .NET sem falhas.
+- Flutter analyze dos dois apps sem problemas bloqueantes.

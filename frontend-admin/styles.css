@@ -1,7 +1,15 @@
 :root {
   color-scheme: light;
   font-family: Inter, Arial, Helvetica, sans-serif;
-  background: #eef2f6;
+  --ride-dark: #07111f;
+  --ride-panel: #101828;
+  --ride-gold: #ffc928;
+  --ride-gold-dark: #d99f00;
+  --ride-green: #16a34a;
+  --ride-red: #dc2626;
+  --ride-border: #d7dde5;
+  --ride-muted: #667085;
+  background: var(--ride-dark);
   color: #172033;
 }
 
@@ -11,10 +19,11 @@
 
 body {
   margin: 0;
+  background: var(--ride-dark);
 }
 
 .sidebar {
-  background: #101828;
+  background: var(--ride-dark);
   bottom: 0;
   color: #ffffff;
   display: flex;
@@ -29,17 +38,59 @@ body {
 }
 
 .brand {
+  align-items: center;
   display: grid;
-  gap: 2px;
+  gap: 10px;
+  grid-template-columns: 44px 1fr;
   margin-bottom: 14px;
-  padding: 0 8px 10px;
+  padding: 0 6px 12px;
 }
 
-.brand strong {
+.brand-mark,
+.login-mark {
+  background: var(--ride-gold);
+  border-radius: 8px;
+  display: inline-block;
+  height: 44px;
+  position: relative;
+  width: 44px;
+}
+
+.brand-mark::before,
+.login-mark::before {
+  background: var(--ride-dark);
+  border-radius: 7px 7px 4px 4px;
+  bottom: 14px;
+  content: "";
+  height: 12px;
+  left: 9px;
+  position: absolute;
+  width: 26px;
+}
+
+.brand-mark::after,
+.login-mark::after {
+  background:
+    radial-gradient(circle at 8px 50%, var(--ride-dark) 0 3px, transparent 3px),
+    radial-gradient(circle at 28px 50%, var(--ride-dark) 0 3px, transparent 3px);
+  bottom: 7px;
+  content: "";
+  height: 8px;
+  left: 4px;
+  position: absolute;
+  width: 36px;
+}
+
+.brand-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.brand-copy strong {
   font-size: 22px;
 }
 
-.brand span {
+.brand-copy span {
   color: #98a2b3;
   font-size: 13px;
 }
@@ -53,14 +104,118 @@ body {
 
 .tab-button.active,
 .tab-button:hover {
-  background: #1d2939;
-  color: #ffffff;
+  background: var(--ride-gold);
+  color: var(--ride-dark);
+}
+
+.tab-button.active {
+  font-weight: 800;
+}
+
+.tab-button:hover {
+  color: var(--ride-dark);
 }
 
 .workspace {
+  background:
+    linear-gradient(180deg, var(--ride-dark) 0, var(--ride-dark) 150px, transparent 150px),
+    #f4f6f8;
   margin-left: 190px;
   min-height: 100vh;
   padding: 18px;
+}
+
+.auth-locked {
+  background:
+    radial-gradient(circle at 20% 15%, rgba(255, 201, 40, 0.14), transparent 28%),
+    var(--ride-dark);
+}
+
+.auth-locked .workspace {
+  background: transparent;
+}
+
+.auth-locked .login-strip {
+  border: 1px solid rgba(255, 201, 40, 0.24);
+}
+
+.login-mark {
+  height: 54px;
+  margin-bottom: 8px;
+  width: 54px;
+}
+
+.login-mark::before {
+  bottom: 17px;
+  height: 14px;
+  left: 11px;
+  width: 32px;
+}
+
+.login-mark::after {
+  bottom: 9px;
+  left: 7px;
+  width: 40px;
+}
+
+.topbar {
+  color: #ffffff;
+}
+
+.topbar p {
+  color: #cbd5e1;
+}
+
+.logged-user {
+  color: #ffffff;
+}
+
+.metric,
+.panel,
+.login-strip {
+  box-shadow: 0 16px 36px rgba(16, 24, 40, 0.08);
+}
+
+.metric strong {
+  color: var(--ride-dark);
+  font-size: 22px;
+}
+
+button {
+  background: var(--ride-gold);
+  border-radius: 8px;
+  color: var(--ride-dark);
+  font-weight: 800;
+}
+
+button:hover {
+  background: var(--ride-gold-dark);
+  color: var(--ride-dark);
+}
+
+button:disabled {
+  background: #98a2b3;
+  color: #ffffff;
+}
+
+.danger {
+  background: var(--ride-red);
+  color: #ffffff;
+}
+
+.danger:hover {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+.ghost {
+  background: #eef2f7;
+  color: #344054;
+}
+
+.ghost:hover {
+  background: #d9e2ec;
+  color: #172033;
 }
 
 .auth-locked .sidebar,
@@ -81,6 +236,7 @@ body {
 
 .topbar {
   align-items: center;
+  color: #ffffff;
   display: flex;
   justify-content: space-between;
   margin-bottom: 14px;
@@ -98,7 +254,7 @@ p {
 }
 
 .topbar p {
-  color: #667085;
+  color: #cbd5e1;
   margin-top: 4px;
 }
 
@@ -113,7 +269,7 @@ p {
 }
 
 .logged-user {
-  color: #344054;
+  color: #ffffff;
   font-size: 14px;
   font-weight: 700;
 }
@@ -286,7 +442,7 @@ label {
 input,
 select {
   border: 1px solid #c7d0dc;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #ffffff;
   font-size: 15px;
   min-height: 40px;
@@ -296,33 +452,37 @@ select {
 
 button {
   align-items: center;
-  background: #2563eb;
+  background: var(--ride-gold);
   border: 0;
-  border-radius: 6px;
-  color: #ffffff;
+  border-radius: 8px;
+  color: var(--ride-dark);
   cursor: pointer;
   display: inline-flex;
   font-size: 14px;
+  font-weight: 800;
   justify-content: center;
   min-height: 40px;
   padding: 8px 12px;
 }
 
 button:hover {
-  background: #1d4ed8;
+  background: var(--ride-gold-dark);
 }
 
 button:disabled {
   background: #98a2b3;
+  color: #ffffff;
   cursor: not-allowed;
 }
 
 .danger {
-  background: #dc2626;
+  background: var(--ride-red);
+  color: #ffffff;
 }
 
 .danger:hover {
   background: #b91c1c;
+  color: #ffffff;
 }
 
 .ghost {
@@ -332,6 +492,7 @@ button:disabled {
 
 .ghost:hover {
   background: #d9e2ec;
+  color: #172033;
 }
 
 .primary-flow {
