@@ -2,6 +2,8 @@ namespace RidePR.Application.DTOs;
 
 public class UpdatePassengerDto
 {
+    public Guid? BranchId { get; set; }
+
     public string Cpf { get; set; } = "";
 
     public DateTime BirthDate { get; set; }

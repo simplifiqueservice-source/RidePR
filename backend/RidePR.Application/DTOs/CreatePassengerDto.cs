@@ -7,6 +7,8 @@ public class CreatePassengerDto
     [Required]
     public Guid UserId { get; set; }
 
+    public Guid? BranchId { get; set; }
+
     [Required]
     public string Cpf { get; set; } = "";
 

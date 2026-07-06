@@ -17,12 +17,29 @@ public class FareSettingsRepository : IFareSettingsRepository
     public async Task<FareSettings?> GetActiveAsync()
     {
         return await _context.FareSettings
+            .Include(x => x.Branch)
             .FirstOrDefaultAsync(x => x.Active);
+    }
+
+    public async Task<FareSettings?> GetActiveAsync(Guid? branchId)
+    {
+        if (branchId.HasValue)
+        {
+            var branchFare = await _context.FareSettings
+                .Include(x => x.Branch)
+                .FirstOrDefaultAsync(x => x.Active && x.BranchId == branchId.Value);
+
+            if (branchFare != null)
+                return branchFare;
+        }
+
+        return await GetActiveAsync();
     }
 
     public async Task<List<FareSettings>> GetAllAsync()
     {
         return await _context.FareSettings
+            .Include(x => x.Branch)
             .OrderBy(x => x.Name)
             .ToListAsync();
     }

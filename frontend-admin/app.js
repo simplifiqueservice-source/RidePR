@@ -1,4 +1,7 @@
-let accessToken = '';
+const adminTokenKey = 'rideprAdminAccessToken';
+const adminBaseUrlKey = 'rideprAdminBaseUrl';
+
+let accessToken = localStorage.getItem(adminTokenKey) || '';
 let hubConnection = null;
 let map = null;
 let originMarker = null;
@@ -10,6 +13,9 @@ let tripsCache = [];
 let driversCache = [];
 let passengersCache = [];
 let vehiclesCache = [];
+let branchesCache = [];
+let adminsCache = [];
+let faresCache = [];
 
 const $ = (id) => document.getElementById(id);
 
@@ -27,6 +33,10 @@ function headers() {
 function numberValue(id) {
   const value = $(id).value.trim().replace(',', '.');
   return Number.parseFloat(value) || 0;
+}
+
+function boolValue(id) {
+  return $(id).value === 'true';
 }
 
 function show(statusCode, body) {
@@ -91,6 +101,9 @@ function showPanel(panelName) {
     motoristas: 'Motoristas',
     passageiros: 'Passageiros',
     veiculos: 'Veiculos',
+    admins: 'Admins',
+    filiais: 'Filiais',
+    tarifas: 'Tarifas/Valores',
     config: 'Configuracoes',
   };
   $('pageTitle').textContent = labels[panelName] ?? 'RidePR';
@@ -265,6 +278,8 @@ async function login() {
 
   if (response?.ok && body?.accessToken) {
     accessToken = body.accessToken;
+    localStorage.setItem(adminTokenKey, accessToken);
+    localStorage.setItem(adminBaseUrlKey, baseUrl());
     $('tokenStatus').textContent = 'Conectado';
     document.body.classList.remove('auth-locked');
     showPanel('dashboard');
@@ -295,6 +310,18 @@ async function list(path) {
 
   if (path.startsWith('/api/trips')) {
     renderTrips(body);
+  }
+
+  if (path.startsWith('/api/branches')) {
+    renderBranches(body);
+  }
+
+  if (path.startsWith('/api/admin-users')) {
+    renderAdmins(body);
+  }
+
+  if (path.startsWith('/api/branch-fares')) {
+    renderFares(body);
   }
 }
 
@@ -416,6 +443,83 @@ function renderTrips(body) {
   updateDashboard();
 }
 
+function renderBranches(body) {
+  const rows = pageItems(body);
+  branchesCache = rows;
+  const table = $('branchesTableBody');
+
+  renderBranchOptions();
+
+  if (!rows.length) {
+    table.innerHTML = '<tr><td colspan="5">Nenhuma filial encontrada.</td></tr>';
+    return;
+  }
+
+  table.innerHTML = rows.map((branch) => `
+    <tr>
+      <td>${cell(field(branch, 'Name'))}</td>
+      <td>${cell(field(branch, 'City'))}/${cell(field(branch, 'State'))}</td>
+      <td>${cell(field(branch, 'Address'))}</td>
+      <td>${cell(field(branch, 'Phone'))}</td>
+      <td>${field(branch, 'Active') ? 'Sim' : 'Nao'}</td>
+    </tr>
+  `).join('');
+}
+
+function renderBranchOptions() {
+  const options = ['<option value="">Sem filial</option>']
+    .concat(branchesCache.map((branch) => `<option value="${field(branch, 'Id')}">${cell(field(branch, 'Name'))}</option>`))
+    .join('');
+
+  ['adminBranch', 'fareBranch'].forEach((id) => {
+    const select = $(id);
+    if (select) select.innerHTML = options;
+  });
+}
+
+function renderAdmins(body) {
+  const rows = pageItems(body);
+  adminsCache = rows;
+  const table = $('adminsTableBody');
+
+  if (!rows.length) {
+    table.innerHTML = '<tr><td colspan="5">Nenhum admin encontrado.</td></tr>';
+    return;
+  }
+
+  table.innerHTML = rows.map((admin) => `
+    <tr>
+      <td>${cell(field(admin, 'Name'))}</td>
+      <td>${cell(field(admin, 'Email'))}</td>
+      <td>${cell(field(admin, 'AdminType'))}</td>
+      <td>${cell(field(admin, 'BranchName'))}</td>
+      <td>${field(admin, 'Active') ? 'Sim' : 'Nao'}</td>
+    </tr>
+  `).join('');
+}
+
+function renderFares(body) {
+  const rows = pageItems(body);
+  faresCache = rows;
+  const table = $('faresTableBody');
+
+  if (!rows.length) {
+    table.innerHTML = '<tr><td colspan="6">Nenhuma tarifa encontrada.</td></tr>';
+    return;
+  }
+
+  table.innerHTML = rows.map((fare) => `
+    <tr>
+      <td>${cell(field(fare, 'BranchName'))}</td>
+      <td>R$ ${cell(field(fare, 'BaseFare'))}</td>
+      <td>R$ ${cell(field(fare, 'PricePerKm'))}</td>
+      <td>R$ ${cell(field(fare, 'PricePerMinute'))}</td>
+      <td>R$ ${cell(field(fare, 'MinimumFare'))}</td>
+      <td>${field(fare, 'Active') ? 'Sim' : 'Nao'}</td>
+    </tr>
+  `).join('');
+}
+
 function upsertTrip(trip) {
   const tripId = cell(field(trip, 'Id'));
   const next = tripsCache.filter((item) => cell(field(item, 'Id')) !== tripId);
@@ -455,6 +559,7 @@ async function refreshActivePanel() {
       list('/api/trips'),
       list('/api/drivers'),
       list('/api/passengers'),
+      list('/api/branches'),
     ]);
     return;
   }
@@ -471,6 +576,23 @@ async function refreshActivePanel() {
 
   if (activePanel === 'veiculos') {
     await list('/api/vehicles');
+    return;
+  }
+
+  if (activePanel === 'admins') {
+    await list('/api/admin-users');
+    await list('/api/branches');
+    return;
+  }
+
+  if (activePanel === 'filiais') {
+    await list('/api/branches');
+    return;
+  }
+
+  if (activePanel === 'tarifas') {
+    await list('/api/branches');
+    await list('/api/branch-fares');
     return;
   }
 
@@ -593,6 +715,55 @@ async function finishTrip() {
   });
 }
 
+async function saveBranch() {
+  const { response } = await post('/api/branches', {
+    name: $('branchName').value.trim(),
+    city: $('branchCity').value.trim(),
+    state: $('branchState').value.trim(),
+    address: $('branchAddress').value.trim(),
+    phone: $('branchPhone').value.trim(),
+    active: boolValue('branchActive'),
+  });
+
+  if (response?.ok) {
+    await list('/api/branches');
+  }
+}
+
+async function saveAdmin() {
+  const branchId = $('adminBranch').value || null;
+  const { response } = await post('/api/admin-users', {
+    name: $('adminName').value.trim(),
+    email: $('adminEmail').value.trim(),
+    password: $('adminPassword').value,
+    adminType: Number.parseInt($('adminType').value, 10),
+    branchId,
+    active: boolValue('adminActive'),
+  });
+
+  if (response?.ok) {
+    await list('/api/admin-users');
+  }
+}
+
+async function saveFare() {
+  const branchId = $('fareBranch').value || null;
+  const { response } = await post('/api/branch-fares', {
+    branchId,
+    name: 'Padrao',
+    baseFare: numberValue('fareBase'),
+    minimumFare: numberValue('fareMinimum'),
+    pricePerKm: numberValue('fareKm'),
+    pricePerMinute: numberValue('fareMinute'),
+    cancellationFee: numberValue('fareCancellation'),
+    active: true,
+  });
+
+  if (response?.ok) {
+    await list('/api/branch-fares');
+  }
+}
+
 async function connectRealtime() {
   if (!window.signalR) {
     setLiveStatus('SignalR JS nao carregado.');
@@ -651,6 +822,7 @@ async function connectRealtime() {
 $('loginButton').addEventListener('click', login);
 $('clearTokenButton').addEventListener('click', () => {
   accessToken = '';
+  localStorage.removeItem(adminTokenKey);
   if (hubConnection) {
     hubConnection.stop();
     hubConnection = null;
@@ -658,7 +830,7 @@ $('clearTokenButton').addEventListener('click', () => {
   $('tokenStatus').textContent = 'Sem login';
   document.body.classList.add('auth-locked');
   setCurrentTripSummary(null);
-  show(0, 'Token removido da memoria.');
+  show(0, 'Login removido deste navegador.');
   setLiveStatus('SignalR desconectado.');
   setButtonStates();
 });
@@ -669,6 +841,9 @@ $('acceptTripButton').addEventListener('click', acceptTrip);
 $('startTripButton').addEventListener('click', startTrip);
 $('finishTripButton').addEventListener('click', finishTrip);
 $('refreshAllButton').addEventListener('click', refreshActivePanel);
+$('saveBranchButton').addEventListener('click', saveBranch);
+$('saveAdminButton').addEventListener('click', saveAdmin);
+$('saveFareButton').addEventListener('click', saveFare);
 
 document.querySelectorAll('[data-list]').forEach((button) => {
   button.addEventListener('click', () => list(button.dataset.list));
@@ -682,6 +857,23 @@ document.querySelectorAll('[data-panel-target]').forEach((button) => {
   $(id).addEventListener('input', setButtonStates);
 });
 
-initMap();
-showPanel(activePanel);
-setButtonStates();
+async function bootstrapAdminPanel() {
+  const savedBaseUrl = localStorage.getItem(adminBaseUrlKey);
+  if (savedBaseUrl) {
+    $('baseUrl').value = savedBaseUrl;
+  }
+
+  initMap();
+  showPanel(activePanel);
+
+  if (accessToken) {
+    $('tokenStatus').textContent = 'Conectado';
+    document.body.classList.remove('auth-locked');
+    await connectRealtime();
+    await refreshActivePanel();
+  }
+
+  setButtonStates();
+}
+
+bootstrapAdminPanel();

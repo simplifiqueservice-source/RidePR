@@ -148,12 +148,10 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
   final passengerIdController = TextEditingController();
-  final passengerCpfController = TextEditingController(text: '11122233344');
-  final passengerBirthDateController =
-      TextEditingController(text: '1990-01-01');
-  final passengerPhoneController = TextEditingController(text: '11999990000');
-  final passengerEmergencyPhoneController =
-      TextEditingController(text: '11999990001');
+  final passengerCpfController = TextEditingController();
+  final passengerBirthDateController = TextEditingController();
+  final passengerPhoneController = TextEditingController();
+  final passengerEmergencyPhoneController = TextEditingController();
   final passengerAddressController = TextEditingController();
   final passengerCityController = TextEditingController();
   final passengerStateController = TextEditingController();
@@ -192,6 +190,9 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   List<Map<String, dynamic>> destinationSuggestions = [];
 
   bool get loggedIn => accessToken != null && accessToken!.isNotEmpty;
+  bool get passengerReady =>
+      passenger != null &&
+      '${_field(passenger!, 'active')}'.toLowerCase() != 'false';
   bool get hasTripId => tripIdController.text.trim().isNotEmpty;
 
   @override
@@ -265,6 +266,63 @@ class _MvpTestHomeState extends State<MvpTestHome> {
         onLogin: _login,
         onRegister: _register,
         onToggleDebug: () => setState(() => debugVisible = !debugVisible),
+      );
+    }
+
+    if (!passengerReady) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Complete seu perfil'),
+          actions: [
+            IconButton(
+              onPressed: () => _clearSession(),
+              icon: const Icon(Icons.logout),
+              tooltip: 'Sair',
+            ),
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              'Complete seus dados para pedir uma corrida.',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 16),
+            _Input(controller: nameController, label: 'Nome'),
+            _Input(controller: passengerCpfController, label: 'CPF'),
+            _Input(controller: passengerPhoneController, label: 'Telefone'),
+            _Input(
+              controller: passengerBirthDateController,
+              label: 'Nascimento (AAAA-MM-DD)',
+            ),
+            _Input(controller: passengerAddressController, label: 'Endereco'),
+            Row(
+              children: [
+                Expanded(
+                  child: _Input(
+                    controller: passengerCityController,
+                    label: 'Cidade',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _Input(
+                    controller: passengerStateController,
+                    label: 'UF',
+                  ),
+                ),
+              ],
+            ),
+            _Input(controller: passengerZipCodeController, label: 'CEP'),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: loading ? null : () => _savePassenger(),
+              icon: const Icon(Icons.save),
+              label: const Text('Salvar e continuar'),
+            ),
+          ],
+        ),
       );
     }
 
@@ -386,7 +444,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
             child: _PassengerRideCard(
               loggedIn: loggedIn,
               loading: loading,
-              passengerReady: passenger != null,
+              passengerReady: passengerReady,
               tripStatus: tripStatus,
               liveStatus: liveStatus,
               locationError: locationError,
@@ -503,16 +561,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     final prefs = await SharedPreferences.getInstance();
 
     baseUrlController.text = prefs.getString('baseUrl') ?? defaultApiBaseUrl;
-    accessToken = _storedValue(prefs, 'accessToken');
-    userId = _storedValue(prefs, 'userId');
     api.baseUrl = baseUrlController.text;
-    api.accessToken = accessToken;
-
-    if (loggedIn) {
-      await _loadPassenger();
-      await _connectRealtime();
-      await _useCurrentLocation();
-    }
 
     if (mounted) {
       setState(() => restoring = false);
@@ -526,11 +575,6 @@ class _MvpTestHomeState extends State<MvpTestHome> {
     await prefs.setString('userId', userId ?? '');
     await prefs.setString('name', '${data['name'] ?? ''}');
     await prefs.setString('email', '${data['email'] ?? ''}');
-  }
-
-  static String? _storedValue(SharedPreferences prefs, String key) {
-    final value = prefs.getString(key);
-    return value == null || value.isEmpty ? null : value;
   }
 
   Future<void> _createTrip() async {
@@ -1121,7 +1165,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   }
 }
 
-class _PassengerAuthPage extends StatelessWidget {
+class _PassengerAuthPage extends StatefulWidget {
   const _PassengerAuthPage({
     required this.baseUrlController,
     required this.nameController,
@@ -1149,6 +1193,26 @@ class _PassengerAuthPage extends StatelessWidget {
   final VoidCallback onToggleDebug;
 
   @override
+  State<_PassengerAuthPage> createState() => _PassengerAuthPageState();
+}
+
+class _PassengerAuthPageState extends State<_PassengerAuthPage> {
+  String mode = 'entry';
+
+  TextEditingController get baseUrlController => widget.baseUrlController;
+  TextEditingController get nameController => widget.nameController;
+  TextEditingController get emailController => widget.emailController;
+  TextEditingController get passwordController => widget.passwordController;
+  TextEditingController get confirmPasswordController =>
+      widget.confirmPasswordController;
+  bool get loading => widget.loading;
+  String get lastResponse => widget.lastResponse;
+  bool get debugVisible => widget.debugVisible;
+  VoidCallback get onLogin => widget.onLogin;
+  VoidCallback get onRegister => widget.onRegister;
+  VoidCallback get onToggleDebug => widget.onToggleDebug;
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
@@ -1167,36 +1231,68 @@ class _PassengerAuthPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Entre ou crie sua conta para pedir corrida.',
+                  mode == 'register'
+                      ? 'Crie sua conta de passageiro.'
+                      : mode == 'login'
+                          ? 'Entre para pedir sua corrida.'
+                          : 'Peça corridas de forma simples.',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 24),
-                _Input(
-                  controller: nameController,
-                  label: 'Nome para criar conta',
-                ),
-                _Input(controller: emailController, label: 'E-mail'),
-                _Input(
-                  controller: passwordController,
-                  label: 'Senha',
-                  obscureText: true,
-                ),
-                _Input(
-                  controller: confirmPasswordController,
-                  label: 'Confirmar senha',
-                  obscureText: true,
-                ),
+                if (mode == 'register')
+                  _Input(
+                    controller: nameController,
+                    label: 'Nome',
+                  ),
+                if (mode != 'entry')
+                  _Input(controller: emailController, label: 'E-mail'),
+                if (mode != 'entry')
+                  _Input(
+                    controller: passwordController,
+                    label: 'Senha',
+                    obscureText: true,
+                  ),
+                if (mode == 'register')
+                  _Input(
+                    controller: confirmPasswordController,
+                    label: 'Confirmar senha',
+                    obscureText: true,
+                  ),
                 const SizedBox(height: 8),
-                FilledButton.icon(
-                  onPressed: loading ? null : onLogin,
-                  icon: const Icon(Icons.login),
-                  label: Text(loading ? 'Entrando...' : 'Entrar'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: loading ? null : onRegister,
-                  icon: const Icon(Icons.person_add),
-                  label: const Text('Criar conta'),
-                ),
+                if (mode == 'entry') ...[
+                  FilledButton.icon(
+                    onPressed: () => setState(() => mode = 'login'),
+                    icon: const Icon(Icons.login),
+                    label: const Text('Entrar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => mode = 'register'),
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Criar conta'),
+                  ),
+                ] else ...[
+                  FilledButton.icon(
+                    onPressed: loading
+                        ? null
+                        : mode == 'register'
+                            ? onRegister
+                            : onLogin,
+                    icon: Icon(
+                        mode == 'register' ? Icons.person_add : Icons.login),
+                    label: Text(
+                      loading
+                          ? 'Aguarde...'
+                          : mode == 'register'
+                              ? 'Criar conta'
+                              : 'Entrar',
+                    ),
+                  ),
+                  TextButton(
+                    onPressed:
+                        loading ? null : () => setState(() => mode = 'entry'),
+                    child: const Text('Voltar'),
+                  ),
+                ],
                 TextButton(
                   onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(

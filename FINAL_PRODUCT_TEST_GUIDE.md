@@ -1,8 +1,19 @@
 # RidePR final product test guide
 
-## Subir API e servicos
+## Validacao obrigatoria
 
-Na raiz do repositorio:
+Execute na raiz do repositorio:
+
+```powershell
+dotnet build backend\RidePR.sln
+dotnet test backend\RidePR.sln
+flutter analyze app-passenger
+flutter analyze app-driver
+cd app-passenger; flutter build apk --debug
+cd ..\app-driver; flutter build apk --debug
+```
+
+## Subir API e painel
 
 ```powershell
 docker compose up -d
@@ -12,128 +23,80 @@ dotnet run --project backend\RidePR.Api\RidePR.Api.csproj --launch-profile http
 A API deve responder em:
 
 ```text
-http://localhost:5090
 http://localhost:8282
 http://45.185.199.173:8282
 ```
 
-## Abrir painel admin
-
-Opção simples:
+Para abrir o painel:
 
 ```powershell
 cd frontend-admin
 python -m http.server 5173
 ```
 
-Abrir:
+Abrir `http://localhost:5173` e manter a BaseUrl padrao `http://45.185.199.173:8282`.
 
-```text
-http://localhost:5173
-```
+## Fluxo passageiro
 
-O painel usa a BaseUrl padrão:
+1. Abrir `app-passenger`.
+2. Escolher `Entrar` ou `Criar conta`.
+3. Completar perfil quando solicitado.
+4. Permitir localizacao.
+5. Ver o mapa com origem real.
+6. Informar destino pela busca.
+7. Tocar em `Pedir corrida`.
+8. Conferir status `Procurando motorista`.
+9. Apos aceite, acompanhar status e marcador do motorista.
+10. Conferir `Corrida em andamento`.
+11. Conferir `Corrida finalizada`.
 
-```text
-http://45.185.199.173:8282
-```
+## Fluxo motorista
 
-## Gerar e instalar APKs
-
-Gerar APK motorista:
-
-```powershell
-cd app-driver
-flutter build apk --debug
-```
-
-APK:
-
-```text
-app-driver\build\app\outputs\flutter-apk\app-debug.apk
-```
-
-Gerar APK passageiro:
-
-```powershell
-cd app-passenger
-flutter build apk --debug
-```
-
-APK:
-
-```text
-app-passenger\build\app\outputs\flutter-apk\app-debug.apk
-```
-
-Instalar no celular com USB:
-
-```powershell
-adb install -r build\app\outputs\flutter-apk\app-debug.apk
-```
-
-## Fluxo do motorista
-
-1. Abrir app-driver.
-2. Entrar ou criar conta.
+1. Abrir `app-driver`.
+2. Escolher `Entrar` ou `Criar conta`.
 3. Completar cadastro do motorista.
 4. Completar cadastro do veiculo.
 5. Ativar motorista e veiculo.
-6. Tocar em **Ficar online**.
-7. Permitir localizacao.
-8. Confirmar que o status muda para aguardando corridas.
-9. Solicitar corrida pelo app passageiro.
-10. Confirmar popup **Nova corrida** com origem, destino, aceitar e recusar.
-11. Aceitar corrida.
-12. Tocar em **Iniciar corrida**.
-13. Confirmar GPS enviando localizacao real.
-14. Tocar em **Finalizar corrida**.
-15. Abrir **Minhas corridas** e confirmar a corrida no historico.
+6. Tocar em `Ficar online`.
+7. Permitir GPS real.
+8. Solicitar corrida pelo passageiro.
+9. Conferir popup `Nova corrida` com origem, destino e valor.
+10. Aceitar ou recusar.
+11. Se aceitar, tocar em `Iniciar corrida`.
+12. Confirmar envio de localizacao a cada 5 segundos somente online/em corrida.
+13. Tocar em `Finalizar corrida`.
 
-## Fluxo do passageiro
+## Fluxo admin principal
 
-1. Abrir app-passenger.
-2. Entrar ou criar conta.
-3. Completar perfil do passageiro.
-4. Permitir localizacao.
-5. Confirmar origem pela localizacao atual.
-6. Buscar destino pelo campo de destino.
-7. Selecionar sugestao.
-8. Tocar em **Pedir corrida**.
-9. Confirmar status **Procurando motorista**.
-10. Quando motorista aceitar, confirmar status **Motorista a caminho**.
-11. Confirmar marcador do motorista no mapa.
-12. Confirmar status **Corrida em andamento**.
-13. Confirmar **Corrida finalizada**.
-14. Abrir **Minhas corridas** e verificar historico.
+1. Entrar no painel.
+2. Abrir `Filiais` e criar/ativar filial.
+3. Abrir `Tarifas` e cadastrar tarifa da filial.
+4. Abrir `Admins` e criar admin de filial vinculado.
+5. Conferir abas `Dashboard`, `Corridas`, `Motoristas`, `Passageiros`, `Veiculos`, `Mapa`, `Admins`, `Filiais`, `Tarifas` e `Config`.
+6. Criar corrida no passageiro e aceitar no motorista.
+7. Conferir atualizacao automatica por SignalR.
+8. Conferir origem, destino e motorista no mapa sem reset a cada localizacao.
 
-## Fluxo do admin
+## Fluxo admin filial
 
-1. Abrir painel admin.
-2. Fazer login como administrador.
-3. Conferir Dashboard:
-   - Corridas aguardando.
-   - Corridas em andamento.
-   - Motoristas online.
-   - Passageiros cadastrados.
-   - Corridas finalizadas hoje.
-4. Abrir Corridas e verificar status em portugues.
-5. Abrir Motoristas, Passageiros e Veiculos.
-6. Abrir Mapa.
-7. Criar corrida pelo passageiro e aceitar pelo motorista.
-8. Confirmar atualizacao automatica por SignalR.
-9. Confirmar que o mapa nao reseta a cada localizacao.
+1. Entrar com admin filial.
+2. Conferir que filiais, admins e tarifas ficam limitados a filial vinculada.
+3. Conferir corridas, motoristas e passageiros da filial.
+4. Validar status em portugues e dados legiveis.
 
-## Checklist do teste definitivo
+## Checklist final
 
-- API abre em `http://localhost:8282`.
-- Admin abre em `http://localhost:5173`.
-- Driver nao mostra JSON, ID tecnico ou lista velha de corridas.
-- Passageiro nao mostra JSON, ID tecnico ou debug.
-- Motorista recebe popup de corrida.
-- GPS real do motorista e passageiro funciona.
-- Localizacao aparece no passageiro e admin.
+- Apps nunca pulam login automaticamente.
+- Primeira tela mostra apenas entrada clara: `Entrar` ou `Criar conta`.
+- Debug fica fora do fluxo principal.
+- Passageiro cai no fluxo de pedir corrida apos perfil completo.
+- Motorista so opera depois de motorista e veiculo completos e ativos.
+- Dispatch cria oferta e mostra popup no motorista.
 - SignalR conecta uma vez por sessao.
-- Historico do motorista mostra somente corridas dele.
-- Historico do passageiro mostra somente corridas dele.
-- APKs debug gerados nos caminhos esperados.
+- GPS fixo nao e usado como localizacao principal.
+- Localizacao duplicada nao e enviada quando o motorista nao se move.
+- Painel admin persiste login no navegador.
+- Filiais, admins de filial e tarifas por filial funcionam.
+- APKs debug sao gerados em:
+  - `app-passenger\build\app\outputs\flutter-apk\app-debug.apk`
+  - `app-driver\build\app\outputs\flutter-apk\app-debug.apk`

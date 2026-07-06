@@ -86,6 +86,7 @@ public class PassengerService
             Id = Guid.NewGuid(),
             UserId = dto.UserId,
             User = user,
+            BranchId = dto.BranchId ?? user.BranchId,
             Cpf = dto.Cpf.Trim(),
             BirthDate = ToUtc(dto.BirthDate),
             Phone = dto.Phone.Trim(),
@@ -121,6 +122,7 @@ public class PassengerService
             return Result<PassengerResponseDto>.Fail("CPF ja cadastrado.");
 
         passenger.Cpf = normalizedCpf;
+        passenger.BranchId = dto.BranchId ?? passenger.BranchId;
         passenger.BirthDate = ToUtc(dto.BirthDate);
         passenger.Phone = dto.Phone.Trim();
         passenger.EmergencyPhone = dto.EmergencyPhone.Trim();
@@ -182,6 +184,8 @@ public class PassengerService
         {
             Id = passenger.Id,
             UserId = passenger.UserId,
+            BranchId = passenger.BranchId,
+            BranchName = passenger.Branch?.Name ?? passenger.User?.Branch?.Name ?? "",
             Name = passenger.User?.Name ?? "",
             Email = passenger.User?.Email ?? "",
             Cpf = passenger.Cpf,

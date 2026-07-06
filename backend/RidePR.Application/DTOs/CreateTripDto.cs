@@ -7,6 +7,8 @@ public class CreateTripDto
     [Required]
     public Guid PassengerId { get; set; }
 
+    public Guid? BranchId { get; set; }
+
     [Required]
     [StringLength(300)]
     public string Origin { get; set; } = string.Empty;

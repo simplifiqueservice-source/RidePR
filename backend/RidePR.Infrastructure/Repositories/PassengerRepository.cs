@@ -20,7 +20,10 @@ public class PassengerRepository : IPassengerRepository
         int page,
         int pageSize)
     {
-        var query = ApplyFilters(_context.Passengers.Include(x => x.User), search, active);
+        var query = ApplyFilters(
+            _context.Passengers.Include(x => x.User).ThenInclude(x => x.Branch).Include(x => x.Branch),
+            search,
+            active);
 
         return await query
             .OrderBy(x => x.User.Name)
@@ -42,6 +45,8 @@ public class PassengerRepository : IPassengerRepository
     {
         return await _context.Passengers
             .Include(x => x.User)
+            .ThenInclude(x => x.Branch)
+            .Include(x => x.Branch)
             .FirstOrDefaultAsync(x => x.Id == id);
     }
 
@@ -49,6 +54,8 @@ public class PassengerRepository : IPassengerRepository
     {
         return await _context.Passengers
             .Include(x => x.User)
+            .ThenInclude(x => x.Branch)
+            .Include(x => x.Branch)
             .FirstOrDefaultAsync(x => x.UserId == userId);
     }
 

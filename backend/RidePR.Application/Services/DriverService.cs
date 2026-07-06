@@ -92,6 +92,7 @@ public class DriverService
         {
             Id = Guid.NewGuid(),
             UserId = dto.UserId,
+            BranchId = dto.BranchId ?? user.BranchId,
             Cpf = dto.Cpf.Trim(),
             Rg = dto.Rg.Trim(),
             BirthDate = ToUtc(dto.BirthDate),
@@ -134,6 +135,7 @@ public class DriverService
             return Result<DriverResponseDto>.Fail("CNH ja cadastrada.");
 
         driver.Cpf = normalizedCpf;
+        driver.BranchId = dto.BranchId ?? driver.BranchId;
         driver.Rg = dto.Rg.Trim();
         driver.BirthDate = ToUtc(dto.BirthDate);
         driver.Phone = dto.Phone.Trim();
@@ -258,6 +260,8 @@ public class DriverService
         {
             Id = driver.Id,
             UserId = driver.UserId,
+            BranchId = driver.BranchId,
+            BranchName = driver.Branch?.Name ?? driver.User?.Branch?.Name ?? "",
             Name = driver.User?.Name ?? "",
             Email = driver.User?.Email ?? "",
             Phone = driver.Phone,

@@ -11,6 +11,7 @@ public class TripService
     private readonly RouteService _routeService;
     private readonly FareCalculatorService _fareCalculator;
     private readonly IDriverRepository _driverRepository;
+    private readonly IPassengerRepository _passengerRepository;
     private readonly IRealtimeNotifier _realtimeNotifier;
 
     public TripService(
@@ -18,12 +19,14 @@ public class TripService
         RouteService routeService,
         FareCalculatorService fareCalculator,
         IDriverRepository driverRepository,
+        IPassengerRepository passengerRepository,
         IRealtimeNotifier realtimeNotifier)
     {
         _repo = repo;
         _routeService = routeService;
         _fareCalculator = fareCalculator;
         _driverRepository = driverRepository;
+        _passengerRepository = passengerRepository;
         _realtimeNotifier = realtimeNotifier;
     }
 
@@ -38,10 +41,14 @@ public class TripService
             dto.DestinationLatitude,
             dto.DestinationLongitude);
 
+        var passenger = await _passengerRepository.GetByIdAsync(dto.PassengerId);
+        var branchId = dto.BranchId ?? passenger?.BranchId;
+
         var trip = new Trip
         {
             Id = Guid.NewGuid(),
             PassengerId = dto.PassengerId,
+            BranchId = branchId,
             Origin = dto.Origin,
             Destination = dto.Destination,
             OriginLatitude = dto.OriginLatitude,
@@ -54,7 +61,7 @@ public class TripService
             CreatedAt = DateTime.UtcNow,
             Price = route == null
                 ? 0
-                : await CalculateFareAsync(route.DistanceKm, route.DurationMinutes),
+                : await CalculateFareAsync(route.DistanceKm, route.DurationMinutes, branchId),
             DriverId = null
         };
 
@@ -150,7 +157,7 @@ public class TripService
             ? actualDurationMinutes.Value
             : trip.EstimatedDurationMinutes;
 
-        trip.Price = await CalculateFareAsync(trip.ActualDistanceKm, durationMinutes);
+        trip.Price = await CalculateFareAsync(trip.ActualDistanceKm, durationMinutes, trip.BranchId);
 
         var driver = await _driverRepository.GetByIdAsync(driverId);
 
@@ -187,9 +194,17 @@ public class TripService
 
     private async Task<decimal> CalculateFareAsync(decimal distanceKm, decimal durationMinutes)
     {
+        return await CalculateFareAsync(distanceKm, durationMinutes, null);
+    }
+
+    private async Task<decimal> CalculateFareAsync(
+        decimal distanceKm,
+        decimal durationMinutes,
+        Guid? branchId)
+    {
         try
         {
-            return await _fareCalculator.CalculateAsync(distanceKm, durationMinutes);
+            return await _fareCalculator.CalculateAsync(distanceKm, durationMinutes, branchId);
         }
         catch
         {

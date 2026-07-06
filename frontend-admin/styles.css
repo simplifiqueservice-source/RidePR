@@ -232,9 +232,11 @@ label {
   gap: 6px;
 }
 
-input {
+input,
+select {
   border: 1px solid #c7d0dc;
   border-radius: 6px;
+  background: #ffffff;
   font-size: 15px;
   min-height: 40px;
   padding: 8px 10px;

@@ -23,7 +23,12 @@ public class DriverRepository : IDriverRepository
         int page,
         int pageSize)
     {
-        var query = ApplyFilters(_context.Drivers.Include(x => x.User), search, status, approvalStatus, active);
+        var query = ApplyFilters(
+            _context.Drivers.Include(x => x.User).ThenInclude(x => x.Branch).Include(x => x.Branch),
+            search,
+            status,
+            approvalStatus,
+            active);
 
         return await query
             .OrderBy(x => x.User.Name)
@@ -47,6 +52,8 @@ public class DriverRepository : IDriverRepository
     {
         return await _context.Drivers
             .Include(x => x.User)
+            .ThenInclude(x => x.Branch)
+            .Include(x => x.Branch)
             .FirstOrDefaultAsync(x => x.Id == id);
     }
 
@@ -54,6 +61,8 @@ public class DriverRepository : IDriverRepository
     {
         return await _context.Drivers
             .Include(x => x.User)
+            .ThenInclude(x => x.Branch)
+            .Include(x => x.Branch)
             .FirstOrDefaultAsync(x => x.UserId == userId);
     }
 

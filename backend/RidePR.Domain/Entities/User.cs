@@ -16,6 +16,12 @@ public class User
 
     public Passenger? Passenger { get; set; }
 
+    public Guid? BranchId { get; set; }
+
+    public Branch? Branch { get; set; }
+
+    public AdminType? AdminType { get; set; }
+
     // Perfil do usuário
     public UserRole Role { get; set; } = UserRole.Passenger;
 

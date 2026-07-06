@@ -10,6 +10,10 @@ public class Driver
 
     public User User { get; set; } = null!;
 
+    public Guid? BranchId { get; set; }
+
+    public Branch? Branch { get; set; }
+
     public string Cpf { get; set; } = "";
 
     public string Rg { get; set; } = "";

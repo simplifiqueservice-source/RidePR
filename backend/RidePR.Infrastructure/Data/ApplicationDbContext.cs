@@ -11,6 +11,7 @@ public class ApplicationDbContext : DbContext
     }
 
     public DbSet<User> Users => Set<User>();
+    public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Driver> Drivers => Set<Driver>();
     public DbSet<Passenger> Passengers => Set<Passenger>();
@@ -57,6 +58,39 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(x => x.Passenger)
                 .WithOne(x => x.User)
                 .HasForeignKey<Passenger>(x => x.UserId);
+
+            entity.Property(x => x.AdminType)
+                .HasConversion<int?>();
+
+            entity.HasIndex(x => x.BranchId);
+
+            entity.HasOne(x => x.Branch)
+                .WithMany()
+                .HasForeignKey(x => x.BranchId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Branch>(entity =>
+        {
+            entity.ToTable("Branches");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Name)
+                .HasMaxLength(150)
+                .IsRequired();
+
+            entity.Property(x => x.City)
+                .HasMaxLength(100);
+
+            entity.Property(x => x.State)
+                .HasMaxLength(2);
+
+            entity.Property(x => x.Address)
+                .HasMaxLength(300);
+
+            entity.Property(x => x.Phone)
+                .HasMaxLength(20);
         });
 
         modelBuilder.Entity<Driver>(entity =>
@@ -67,6 +101,8 @@ public class ApplicationDbContext : DbContext
 
             entity.HasIndex(x => x.UserId)
                 .IsUnique();
+
+            entity.HasIndex(x => x.BranchId);
 
             entity.HasIndex(x => x.Cpf)
                 .IsUnique();
@@ -123,6 +159,11 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(x => x.ApprovalStatus)
                 .HasConversion<int>();
+
+            entity.HasOne(x => x.Branch)
+                .WithMany()
+                .HasForeignKey(x => x.BranchId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Vehicle>(entity =>
@@ -177,6 +218,8 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(x => x.UserId)
                 .IsUnique();
 
+            entity.HasIndex(x => x.BranchId);
+
             entity.HasIndex(x => x.Cpf)
                 .IsUnique();
 
@@ -201,6 +244,11 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(x => x.ZipCode)
                 .HasMaxLength(10);
+
+            entity.HasOne(x => x.Branch)
+                .WithMany()
+                .HasForeignKey(x => x.BranchId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<PassengerHistory>(entity =>
@@ -221,6 +269,54 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(x => x.Passenger)
                 .WithMany(x => x.History)
                 .HasForeignKey(x => x.PassengerId);
+        });
+
+        modelBuilder.Entity<Trip>(entity =>
+        {
+            entity.ToTable("Trips");
+
+            entity.HasKey(x => x.Id);
+
+            entity.HasIndex(x => x.BranchId);
+            entity.HasIndex(x => x.PassengerId);
+            entity.HasIndex(x => x.DriverId);
+            entity.HasIndex(x => x.Status);
+
+            entity.Property(x => x.EstimatedDistanceKm).HasPrecision(18, 2);
+            entity.Property(x => x.EstimatedDurationMinutes).HasPrecision(18, 2);
+            entity.Property(x => x.ActualDistanceKm).HasPrecision(18, 2);
+            entity.Property(x => x.Price).HasPrecision(18, 2);
+            entity.Property(x => x.Status).HasConversion<int>();
+
+            entity.HasOne(x => x.Branch)
+                .WithMany()
+                .HasForeignKey(x => x.BranchId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<FareSettings>(entity =>
+        {
+            entity.ToTable("FareSettings");
+
+            entity.HasKey(x => x.Id);
+
+            entity.HasIndex(x => new { x.BranchId, x.Active });
+
+            entity.Property(x => x.Name).HasMaxLength(100);
+            entity.Property(x => x.BaseFare).HasPrecision(18, 2);
+            entity.Property(x => x.MinimumFare).HasPrecision(18, 2);
+            entity.Property(x => x.IncludedDistanceKm).HasPrecision(18, 2);
+            entity.Property(x => x.PricePerKm).HasPrecision(18, 2);
+            entity.Property(x => x.PricePerMinute).HasPrecision(18, 2);
+            entity.Property(x => x.WaitingMinutePrice).HasPrecision(18, 2);
+            entity.Property(x => x.CancellationFee).HasPrecision(18, 2);
+            entity.Property(x => x.PlatformCommission).HasPrecision(18, 2);
+            entity.Property(x => x.DynamicMultiplier).HasPrecision(18, 2);
+
+            entity.HasOne(x => x.Branch)
+                .WithMany()
+                .HasForeignKey(x => x.BranchId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<DriverLocation>(entity =>

@@ -2,6 +2,8 @@ namespace RidePR.Application.DTOs;
 
 public class UpdateDriverDto
 {
+    public Guid? BranchId { get; set; }
+
     public string Cpf { get; set; } = "";
 
     public string Rg { get; set; } = "";

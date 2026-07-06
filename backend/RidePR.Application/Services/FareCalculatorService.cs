@@ -14,12 +14,20 @@ public class FareCalculatorService
 
     public async Task<decimal> CalculateAsync(decimal distanceKm, decimal durationMinutes)
     {
-        var fare = await _fareRepository.GetActiveAsync();
+        return await CalculateAsync(distanceKm, durationMinutes, null);
+    }
+
+    public async Task<decimal> CalculateAsync(
+        decimal distanceKm,
+        decimal durationMinutes,
+        Guid? branchId)
+    {
+        var fare = await _fareRepository.GetActiveAsync(branchId);
 
         if (fare == null)
             throw new Exception("Nenhuma tarifa ativa encontrada.");
 
-        decimal total = fare.MinimumFare;
+        decimal total = fare.BaseFare > 0 ? fare.BaseFare : fare.MinimumFare;
 
         // KM excedente
         if (distanceKm > fare.IncludedDistanceKm)

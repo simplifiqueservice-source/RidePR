@@ -6,6 +6,8 @@ public interface IFareSettingsRepository
 {
     Task<FareSettings?> GetActiveAsync();
 
+    Task<FareSettings?> GetActiveAsync(Guid? branchId);
+
     Task<List<FareSettings>> GetAllAsync();
 
     Task AddAsync(FareSettings settings);

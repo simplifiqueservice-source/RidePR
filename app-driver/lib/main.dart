@@ -165,17 +165,6 @@ class AuthSession {
   Future<void> restore() async {
     final prefs = await SharedPreferences.getInstance();
     api.baseUrl = prefs.getString('baseUrl') ?? api.baseUrl;
-    api.accessToken = _storedValue(prefs, 'accessToken');
-    refreshToken = _storedValue(prefs, 'refreshToken');
-    userId = _storedValue(prefs, 'userId');
-    name = _storedValue(prefs, 'name');
-    email = _storedValue(prefs, 'email');
-    role = _storedValue(prefs, 'role');
-  }
-
-  static String? _storedValue(SharedPreferences prefs, String key) {
-    final value = prefs.getString(key);
-    return value == null || value.isEmpty ? null : value;
   }
 
   Future<void> login(String baseUrl, String email, String password) async {
@@ -261,11 +250,12 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   late final baseUrl = TextEditingController(text: widget.session.api.baseUrl);
-  final name = TextEditingController(text: 'Motorista RidePR');
-  final email = TextEditingController(text: 'motorista.mvp@ridepr.test');
-  final password = TextEditingController(text: 'Senha123!');
+  final name = TextEditingController();
+  final email = TextEditingController();
+  final password = TextEditingController();
   final confirmPassword = TextEditingController();
   bool loading = false;
+  String mode = 'entry';
   String? error;
 
   @override
@@ -297,38 +287,69 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Entre para receber corridas',
+                  mode == 'register'
+                      ? 'Crie sua conta de motorista'
+                      : mode == 'login'
+                          ? 'Entre para receber corridas'
+                          : 'Dirija com um app simples e profissional',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 28),
-                _Input(controller: baseUrl, label: 'Endereco da API'),
-                _Input(controller: name, label: 'Nome para criar conta'),
-                _Input(controller: email, label: 'E-mail'),
-                _Input(
-                  controller: password,
-                  label: 'Senha',
-                  obscureText: true,
-                ),
-                _Input(
-                  controller: confirmPassword,
-                  label: 'Confirmar senha',
-                  obscureText: true,
-                ),
+                if (mode != 'entry')
+                  _Input(controller: baseUrl, label: 'Endereco da API'),
+                if (mode == 'register') _Input(controller: name, label: 'Nome'),
+                if (mode != 'entry') _Input(controller: email, label: 'E-mail'),
+                if (mode != 'entry')
+                  _Input(
+                    controller: password,
+                    label: 'Senha',
+                    obscureText: true,
+                  ),
+                if (mode == 'register')
+                  _Input(
+                    controller: confirmPassword,
+                    label: 'Confirmar senha',
+                    obscureText: true,
+                  ),
                 if (error != null) ...[
                   const SizedBox(height: 8),
                   Text(error!, style: const TextStyle(color: Colors.red)),
                 ],
                 const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: loading ? null : _submit,
-                  icon: const Icon(Icons.login),
-                  label: Text(loading ? 'Entrando...' : 'Entrar'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: loading ? null : _register,
-                  icon: const Icon(Icons.person_add),
-                  label: const Text('Criar conta'),
-                ),
+                if (mode == 'entry') ...[
+                  FilledButton.icon(
+                    onPressed: () => setState(() => mode = 'login'),
+                    icon: const Icon(Icons.login),
+                    label: const Text('Entrar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => mode = 'register'),
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Criar conta'),
+                  ),
+                ] else ...[
+                  FilledButton.icon(
+                    onPressed: loading
+                        ? null
+                        : mode == 'register'
+                            ? _register
+                            : _submit,
+                    icon: Icon(
+                        mode == 'register' ? Icons.person_add : Icons.login),
+                    label: Text(
+                      loading
+                          ? 'Aguarde...'
+                          : mode == 'register'
+                              ? 'Criar conta'
+                              : 'Entrar',
+                    ),
+                  ),
+                  TextButton(
+                    onPressed:
+                        loading ? null : () => setState(() => mode = 'entry'),
+                    child: const Text('Voltar'),
+                  ),
+                ],
                 TextButton(
                   onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -427,21 +448,21 @@ class _DriverHomePageState extends State<DriverHomePage> {
   final actualDuration = TextEditingController(text: '18');
   final cpf = TextEditingController();
   final rg = TextEditingController();
-  final birthDate = TextEditingController(text: '1990-01-01');
+  final birthDate = TextEditingController();
   final phone = TextEditingController();
   final emergencyPhone = TextEditingController();
   final address = TextEditingController();
-  final city = TextEditingController(text: 'Sao Paulo');
-  final state = TextEditingController(text: 'SP');
+  final city = TextEditingController();
+  final state = TextEditingController();
   final zipCode = TextEditingController();
   final cnhNumber = TextEditingController();
-  final cnhCategory = TextEditingController(text: 'B');
-  final cnhExpiration = TextEditingController(text: '2030-01-01');
+  final cnhCategory = TextEditingController();
+  final cnhExpiration = TextEditingController();
   final vehiclePlate = TextEditingController();
   final vehicleBrand = TextEditingController();
   final vehicleModel = TextEditingController();
   final vehicleColor = TextEditingController();
-  final vehicleYear = TextEditingController(text: '2022');
+  final vehicleYear = TextEditingController();
   final vehicleRenavam = TextEditingController();
   final vehicleChassis = TextEditingController();
 
@@ -515,6 +536,65 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!loading && !driverReady) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Complete seu cadastro'),
+          actions: [
+            IconButton(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout),
+              tooltip: 'Sair',
+            ),
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              'Para ficar online, complete o cadastro do motorista, cadastre um veiculo e mantenha ambos ativos.',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 16),
+            _DriverRegistrationCard(
+              hasDriver: driver != null,
+              cpf: cpf,
+              rg: rg,
+              birthDate: birthDate,
+              phone: phone,
+              emergencyPhone: emergencyPhone,
+              address: address,
+              city: city,
+              state: state,
+              zipCode: zipCode,
+              cnhNumber: cnhNumber,
+              cnhCategory: cnhCategory,
+              cnhExpiration: cnhExpiration,
+              active: _boolValue(driver, 'active', fallback: true),
+              onSave: _saveDriver,
+              onToggleActive: driver == null ? null : _toggleDriverActive,
+            ),
+            const SizedBox(height: 12),
+            _VehicleRegistrationCard(
+              hasDriver: driver != null,
+              hasVehicle: vehicle != null,
+              plate: vehiclePlate,
+              brand: vehicleBrand,
+              model: vehicleModel,
+              color: vehicleColor,
+              year: vehicleYear,
+              renavam: vehicleRenavam,
+              chassis: vehicleChassis,
+              active: _boolValue(vehicle, 'active', fallback: true),
+              onSave: driver == null ? null : _saveVehicle,
+              onToggleActive: vehicle == null ? null : _toggleVehicleActive,
+            ),
+            if (loading) const LinearProgressIndicator(),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       endDrawer: Drawer(
         child: SafeArea(

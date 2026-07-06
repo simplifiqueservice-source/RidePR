@@ -18,6 +18,7 @@ public class UserRepository : IUserRepository
     public async Task<User?> GetByEmailAsync(string email)
     {
         return await _context.Users
+            .Include(x => x.Branch)
             .Include(x => x.RefreshTokens)
             .FirstOrDefaultAsync(x => x.Email.ToLower() == email.ToLower());
     }
@@ -25,6 +26,7 @@ public class UserRepository : IUserRepository
     public async Task<User?> GetByIdAsync(Guid id)
     {
         return await _context.Users
+            .Include(x => x.Branch)
             .Include(x => x.RefreshTokens)
             .FirstOrDefaultAsync(x => x.Id == id);
     }
@@ -36,7 +38,7 @@ public class UserRepository : IUserRepository
         int page,
         int pageSize)
     {
-        var query = ApplyFilters(_context.Users.AsQueryable(), search, role, active);
+        var query = ApplyFilters(_context.Users.Include(x => x.Branch), search, role, active);
 
         return await query
             .OrderBy(x => x.Name)

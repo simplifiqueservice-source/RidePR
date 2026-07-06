@@ -19,6 +19,9 @@
       <button class="tab-button" data-panel-target="motoristas" type="button">Motoristas</button>
       <button class="tab-button" data-panel-target="passageiros" type="button">Passageiros</button>
       <button class="tab-button" data-panel-target="veiculos" type="button">Veiculos</button>
+      <button class="tab-button" data-panel-target="admins" type="button">Admins</button>
+      <button class="tab-button" data-panel-target="filiais" type="button">Filiais</button>
+      <button class="tab-button" data-panel-target="tarifas" type="button">Tarifas</button>
       <button class="tab-button" data-panel-target="config" type="button">Configuracoes</button>
     </aside>
 
@@ -34,7 +37,7 @@
         </div>
       </header>
 
-      <section class="login-strip" data-panel="dashboard corridas mapa motoristas passageiros veiculos config">
+      <section class="login-strip" data-panel="dashboard corridas mapa motoristas passageiros veiculos admins filiais tarifas config">
         <div class="login-title">
           <strong>Entrar no RidePR Admin</strong>
           <span>Faca login para acessar corridas, mapa e cadastros.</span>
@@ -46,7 +49,7 @@
         <span id="tokenStatus">Sem login</span>
       </section>
 
-      <section class="dashboard" data-panel="dashboard corridas mapa motoristas passageiros veiculos">
+      <section class="dashboard" data-panel="dashboard corridas mapa motoristas passageiros veiculos admins filiais tarifas">
         <article class="metric">
           <span>Corridas aguardando</span>
           <strong id="waitingTripsMetric">0</strong>
@@ -216,6 +219,93 @@
             <tbody id="vehiclesTableBody">
               <tr><td colspan="7">Clique em Recarregar.</td></tr>
             </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel wide" data-panel="admins">
+        <div class="panel-title">
+          <h2>Admins</h2>
+          <button data-list="/api/admin-users" type="button" class="ghost">Recarregar</button>
+        </div>
+        <div class="grid compact">
+          <label>Nome<input id="adminName" /></label>
+          <label>E-mail<input id="adminEmail" /></label>
+          <label>Senha<input id="adminPassword" type="password" /></label>
+          <label>Tipo
+            <select id="adminType">
+              <option value="1">AdminPrincipal</option>
+              <option value="2">AdminFilial</option>
+            </select>
+          </label>
+          <label>Filial<select id="adminBranch"></select></label>
+          <label>Ativo
+            <select id="adminActive">
+              <option value="true">Sim</option>
+              <option value="false">Nao</option>
+            </select>
+          </label>
+        </div>
+        <button id="saveAdminButton" type="button" class="wide-button">Salvar admin</button>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Nome</th><th>E-mail</th><th>Tipo</th><th>Filial</th><th>Ativo</th></tr>
+            </thead>
+            <tbody id="adminsTableBody"><tr><td colspan="5">Clique em Recarregar.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel wide" data-panel="filiais">
+        <div class="panel-title">
+          <h2>Filiais</h2>
+          <button data-list="/api/branches" type="button" class="ghost">Recarregar</button>
+        </div>
+        <div class="grid compact">
+          <label>Nome<input id="branchName" /></label>
+          <label>Cidade<input id="branchCity" /></label>
+          <label>UF<input id="branchState" maxlength="2" /></label>
+          <label>Telefone<input id="branchPhone" /></label>
+          <label>Endereco<input id="branchAddress" /></label>
+          <label>Ativa
+            <select id="branchActive">
+              <option value="true">Sim</option>
+              <option value="false">Nao</option>
+            </select>
+          </label>
+        </div>
+        <button id="saveBranchButton" type="button" class="wide-button">Salvar filial</button>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Nome</th><th>Cidade/UF</th><th>Endereco</th><th>Telefone</th><th>Ativa</th></tr>
+            </thead>
+            <tbody id="branchesTableBody"><tr><td colspan="5">Clique em Recarregar.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel wide" data-panel="tarifas">
+        <div class="panel-title">
+          <h2>Tarifas/Valores</h2>
+          <button data-list="/api/branch-fares" type="button" class="ghost">Recarregar</button>
+        </div>
+        <div class="grid compact">
+          <label>Filial<select id="fareBranch"></select></label>
+          <label>Valor base<input id="fareBase" value="7" /></label>
+          <label>Valor minimo<input id="fareMinimum" value="7" /></label>
+          <label>Valor por km<input id="fareKm" value="1" /></label>
+          <label>Valor por minuto<input id="fareMinute" value="0.5" /></label>
+          <label>Cancelamento<input id="fareCancellation" value="0" /></label>
+        </div>
+        <button id="saveFareButton" type="button" class="wide-button">Salvar tarifa</button>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Filial</th><th>Base</th><th>Km</th><th>Minuto</th><th>Minima</th><th>Ativa</th></tr>
+            </thead>
+            <tbody id="faresTableBody"><tr><td colspan="6">Clique em Recarregar.</td></tr></tbody>
           </table>
         </div>
       </section>

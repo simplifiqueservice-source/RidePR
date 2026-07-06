@@ -4,6 +4,12 @@ public class FareSettings
 {
     public Guid Id { get; set; }
 
+    public Guid? BranchId { get; set; }
+
+    public Branch? Branch { get; set; }
+
+    public decimal BaseFare { get; set; }
+
     // Nome da categoria
     public string Name { get; set; } = "Econômico";
 

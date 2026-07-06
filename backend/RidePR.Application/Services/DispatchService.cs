@@ -271,7 +271,10 @@ public class DispatchService
             if (driver == null ||
                 !driver.Active ||
                 driver.Status != DriverStatus.Online ||
-                driver.ApprovalStatus != DriverApprovalStatus.Approved)
+                driver.ApprovalStatus != DriverApprovalStatus.Approved ||
+                (trip.BranchId.HasValue &&
+                 driver.BranchId.HasValue &&
+                 driver.BranchId.Value != trip.BranchId.Value))
                 continue;
 
             var now = DateTime.UtcNow;
@@ -283,6 +286,7 @@ public class DispatchService
                 ExpiresAt = now.AddSeconds(state.TimeoutSeconds),
                 DistanceKm = candidate.DistanceKm,
                 EtaMinutes = candidate.EtaMinutes,
+                Price = trip.Price,
                 Origin = trip.Origin,
                 Destination = trip.Destination
             };
