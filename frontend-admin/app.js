@@ -1,5 +1,4 @@
 const adminTokenKey = 'rideprAdminAccessToken';
-const adminBaseUrlKey = 'rideprAdminBaseUrl';
 
 let accessToken = localStorage.getItem(adminTokenKey) || '';
 let hubConnection = null;
@@ -8,7 +7,7 @@ let originMarker = null;
 let destinationMarker = null;
 let driverMarker = null;
 let currentTrip = null;
-let activePanel = 'dashboard';
+let activePanel = 'corridas';
 let tripsCache = [];
 let driversCache = [];
 let passengersCache = [];
@@ -21,6 +20,22 @@ const $ = (id) => document.getElementById(id);
 
 function baseUrl() {
   return $('baseUrl').value.trim().replace(/\/+$/, '');
+}
+
+function localApiBaseUrl() {
+  const { protocol, hostname, port, origin } = window.location;
+
+  if (protocol === 'http:' || protocol === 'https:') {
+    if (port === '8282' || hostname === '127.0.0.1' || hostname === 'localhost') {
+      return origin;
+    }
+  }
+
+  return 'http://127.0.0.1:8282';
+}
+
+function isLocalPanel() {
+  return ['127.0.0.1', 'localhost'].includes(window.location.hostname) || window.location.port === '8282';
 }
 
 function headers() {
@@ -48,14 +63,24 @@ function statusLabel(status) {
   const normalized = String(status ?? '');
 
   return {
-    0: 'Solicitada',
+    0: 'Aguardando motorista',
     1: 'Aceita',
     2: 'Em andamento',
     3: 'Finalizada',
-    Requested: 'Solicitada',
+    4: 'Cancelada',
+    Requested: 'Aguardando motorista',
+    Dispatched: 'Enviada ao motorista',
     Accepted: 'Aceita',
+    Started: 'Em andamento',
     InProgress: 'Em andamento',
     Finished: 'Finalizada',
+    Cancelled: 'Cancelada',
+    Rejected: 'Recusada',
+    Active: 'Ativo',
+    Inactive: 'Inativo',
+    Pending: 'Pendente',
+    Approved: 'Aprovado',
+    Blocked: 'Bloqueado',
   }[normalized] ?? (normalized || 'Desconhecido');
 }
 
@@ -71,7 +96,24 @@ function eventLabel(eventName) {
 }
 
 function setLiveStatus(message) {
-  $('liveStatus').textContent = message;
+  const status = $('liveStatus');
+  const normalized = String(message).toLowerCase();
+  status.classList.remove('online', 'reconnecting', 'offline');
+
+  if (normalized.includes('online') || normalized.includes('conectado')) {
+    status.textContent = 'Online';
+    status.classList.add('online');
+    return;
+  }
+
+  if (normalized.includes('reconect')) {
+    status.textContent = 'Reconectando';
+    status.classList.add('reconnecting');
+    return;
+  }
+
+  status.textContent = 'Offline';
+  status.classList.add('offline');
 }
 
 function setCurrentTripSummary(trip) {
@@ -114,6 +156,10 @@ function showPanel(panelName) {
   document.querySelectorAll('[data-panel-target]').forEach((button) => {
     button.classList.toggle('active', button.dataset.panelTarget === panelName);
   });
+
+  if (accessToken) {
+    refreshActivePanel();
+  }
 
   setTimeout(() => {
     if (map) {
@@ -270,7 +316,21 @@ async function post(path, body) {
   });
 }
 
+async function put(path, body) {
+  return request(path, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+async function remove(path) {
+  return request(path, {
+    method: 'DELETE',
+  });
+}
+
 async function login() {
+  $('tokenStatus').textContent = 'Entrando...';
   const { response, body } = await post('/api/auth/login', {
     email: $('email').value.trim(),
     password: $('password').value,
@@ -279,36 +339,292 @@ async function login() {
   if (response?.ok && body?.accessToken) {
     accessToken = body.accessToken;
     localStorage.setItem(adminTokenKey, accessToken);
-    localStorage.setItem(adminBaseUrlKey, baseUrl());
     $('tokenStatus').textContent = 'Conectado';
+    $('loggedUser').textContent = body.name || body.email || 'Admin';
     document.body.classList.remove('auth-locked');
-    showPanel('dashboard');
+    showPanel('corridas');
     await connectRealtime();
     await refreshActivePanel();
     setButtonStates();
+    return;
   }
+
+  accessToken = '';
+  localStorage.removeItem(adminTokenKey);
+  document.body.classList.add('auth-locked');
+  const message = body?.message ?? body ?? 'Nao foi possivel fazer login.';
+  $('tokenStatus').textContent = response
+    ? `Falha no login: HTTP ${response.status}`
+    : 'Falha no login';
+  show(response?.status ?? 'LOCAL', message);
+}
+
+function formatDate(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? cell(value)
+    : date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function currency(value) {
+  const number = Number(value || 0);
+  return number.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function detailItem(label, value) {
+  return `<div class="detail-item"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div>`;
+}
+
+function openDetails(title, items, technicalItems = []) {
+  $('detailsTitle').textContent = title;
+  $('detailsContent').innerHTML = items.map(([label, value]) => detailItem(label, value)).join('') +
+    `<div class="detail-item"><strong>Detalhes tecnicos</strong><details><summary>Mostrar IDs</summary>${technicalItems
+      .map(([label, value]) => `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`)
+      .join('')}</details></div>`;
+  $('detailsModal').showModal();
+}
+
+function focusTripOnMap(trip) {
+  initMap();
+  updateTripMap({
+    id: field(trip, 'Id'),
+    status: field(trip, 'Status'),
+    originLatitude: field(trip, 'OriginLatitude'),
+    originLongitude: field(trip, 'OriginLongitude'),
+    destinationLatitude: field(trip, 'DestinationLatitude'),
+    destinationLongitude: field(trip, 'DestinationLongitude'),
+  }, 'Status consultado');
+}
+
+function showTripDetails(id) {
+  const trip = tripsCache.find((item) => String(field(item, 'Id')) === String(id));
+  if (!trip) return;
+
+  focusTripOnMap(trip);
+  openDetails(`Corrida ${field(trip, 'ShortCode') || ''}`, [
+    ['Status', field(trip, 'StatusLabel')],
+    ['Passageiro', `${field(trip, 'PassengerName')} - ${field(trip, 'PassengerPhone') || 'sem telefone'}`],
+    ['Motorista', `${field(trip, 'DriverName')} - ${field(trip, 'DriverPhone') || 'sem telefone'}`],
+    ['Veiculo', field(trip, 'Vehicle')],
+    ['Origem completa', field(trip, 'OriginAddress') || field(trip, 'Origin')],
+    ['Destino completo', field(trip, 'DestinationAddress') || field(trip, 'Destination')],
+    ['Filial', field(trip, 'BranchName')],
+    ['Valor', currency(field(trip, 'FareAmount') ?? field(trip, 'Price'))],
+    ['Criada em', formatDate(field(trip, 'CreatedAt'))],
+  ], [
+    ['Corrida ID', field(trip, 'Id')],
+    ['Passageiro ID', field(trip, 'PassengerId')],
+    ['Motorista ID', field(trip, 'DriverId')],
+    ['Filial ID', field(trip, 'BranchId')],
+  ]);
+}
+
+function showEntityDetails(kind, id) {
+  const caches = {
+    driver: driversCache,
+    passenger: passengersCache,
+    vehicle: vehiclesCache,
+  };
+  const item = caches[kind].find((entry) => String(field(entry, 'Id')) === String(id));
+  if (!item) return;
+
+  const title = kind === 'driver' ? 'Motorista' : kind === 'passenger' ? 'Passageiro' : 'Veiculo';
+  openDetails(title, Object.entries({
+    Nome: field(item, 'Name') || field(item, 'DriverName') || field(item, 'Plate'),
+    Telefone: field(item, 'Phone'),
+    CPF: field(item, 'Cpf'),
+    CNH: field(item, 'Cnh'),
+    Veiculo: field(item, 'Vehicle') || `${field(item, 'Brand')} ${field(item, 'Model')} - ${field(item, 'Plate')}`,
+    Cidade: `${field(item, 'City') || '-'} / ${field(item, 'State') || '-'}`,
+    Filial: field(item, 'BranchName'),
+    Status: field(item, 'StatusLabel') || field(item, 'ActiveLabel'),
+  }), [
+    ['ID', field(item, 'Id')],
+    ['Usuario ID', field(item, 'UserId')],
+    ['Motorista ID', field(item, 'DriverId')],
+    ['Filial ID', field(item, 'BranchId')],
+  ]);
+}
+
+function editBranch(id) {
+  const branch = branchesCache.find((item) => String(field(item, 'Id')) === String(id));
+
+  if (!branch) return;
+
+  $('branchId').value = field(branch, 'Id') ?? '';
+  $('branchName').value = field(branch, 'Name') ?? '';
+  $('branchCity').value = field(branch, 'City') ?? '';
+  $('branchState').value = field(branch, 'State') ?? '';
+  $('branchPhone').value = field(branch, 'Phone') ?? '';
+  $('branchAddress').value = field(branch, 'Address') ?? '';
+  $('branchActive').value = field(branch, 'Active') ? 'true' : 'false';
+  $('branchName').focus();
+}
+
+async function toggleBranch(id) {
+  const branch = branchesCache.find((item) => String(field(item, 'Id')) === String(id));
+
+  if (!branch) return;
+
+  const nextActive = !field(branch, 'Active');
+
+  if (!nextActive && !confirm('Tem certeza que deseja desativar esta filial?')) {
+    return;
+  }
+
+  await put(`/api/branches/${id}`, {
+    name: field(branch, 'Name'),
+    city: field(branch, 'City'),
+    state: field(branch, 'State'),
+    address: field(branch, 'Address'),
+    phone: field(branch, 'Phone'),
+    active: nextActive,
+  });
+  await list('/api/branches');
+}
+
+function editAdmin(id) {
+  const admin = adminsCache.find((item) => String(field(item, 'Id')) === String(id));
+
+  if (!admin) return;
+
+  $('adminId').value = field(admin, 'Id') ?? '';
+  $('adminName').value = field(admin, 'Name') ?? '';
+  $('adminEmail').value = field(admin, 'Email') ?? '';
+  $('adminPassword').value = '';
+  $('adminType').value = String(field(admin, 'AdminType')).includes('Filial') ? '2' : '1';
+  $('adminBranch').value = field(admin, 'BranchId') ?? '';
+  $('adminActive').value = field(admin, 'Active') ? 'true' : 'false';
+  $('adminName').focus();
+}
+
+async function toggleAdmin(id) {
+  const admin = adminsCache.find((item) => String(field(item, 'Id')) === String(id));
+
+  if (!admin) return;
+
+  const nextActive = !field(admin, 'Active');
+
+  if (!nextActive && !confirm('Tem certeza que deseja desativar este admin?')) {
+    return;
+  }
+
+  await put(`/api/admin-users/${id}`, {
+    name: field(admin, 'Name'),
+    email: field(admin, 'Email'),
+    password: '',
+    adminType: String(field(admin, 'AdminType')).includes('Filial') ? 2 : 1,
+    branchId: field(admin, 'BranchId') || null,
+    active: nextActive,
+  });
+  await list('/api/admin-users');
+}
+
+async function runAdminAction(action, id) {
+  const actions = {
+    'toggle-trip-details': () => showTripDetails(id),
+    'toggle-driver-details': () => showEntityDetails('driver', id),
+    'toggle-passenger-details': () => showEntityDetails('passenger', id),
+    'toggle-vehicle-details': () => showEntityDetails('vehicle', id),
+    'cancel-trip': async () => {
+      if (!confirm('Tem certeza que deseja cancelar esta corrida?')) return;
+      await post(`/api/trips/${id}/cancel`, {});
+      await list('/api/admin/trips');
+    },
+    'finish-trip-admin': async () => {
+      if (!confirm('Tem certeza que deseja finalizar esta corrida manualmente?')) return;
+      await post(`/api/admin/trips/${id}/finish`, {});
+      await list('/api/admin/trips');
+    },
+    'redispatch-trip': async () => {
+      if (!confirm('Tem certeza que deseja reenviar esta corrida para motoristas?')) return;
+      await post(`/api/admin/trips/${id}/redispatch`, {});
+      await list('/api/admin/trips');
+    },
+    'approve-passenger': async () => {
+      await post(`/api/admin/passengers/${id}/approve`, {});
+      await list('/api/admin/passengers');
+    },
+    'block-passenger': async () => {
+      if (!confirm('Tem certeza que deseja bloquear este passageiro?')) return;
+      await post(`/api/admin/passengers/${id}/block`, {});
+      await list('/api/admin/passengers');
+    },
+    'delete-passenger': async () => {
+      if (!confirm('Tem certeza que deseja excluir este passageiro?')) return;
+      await remove(`/api/admin/passengers/${id}`);
+      await list('/api/admin/passengers');
+    },
+    'approve-driver': async () => {
+      await post(`/api/admin/drivers/${id}/approve`, {});
+      await list('/api/admin/drivers');
+    },
+    'block-driver': async () => {
+      if (!confirm('Tem certeza que deseja bloquear este motorista?')) return;
+      await post(`/api/admin/drivers/${id}/block`, {});
+      await list('/api/admin/drivers');
+    },
+    'delete-driver': async () => {
+      if (!confirm('Tem certeza que deseja excluir este motorista?')) return;
+      await remove(`/api/admin/drivers/${id}`);
+      await list('/api/admin/drivers');
+    },
+    'approve-vehicle': async () => {
+      await post(`/api/admin/vehicles/${id}/approve`, {});
+      await list('/api/admin/vehicles');
+    },
+    'disable-vehicle': async () => {
+      if (!confirm('Tem certeza que deseja desativar este veiculo?')) return;
+      await post(`/api/admin/vehicles/${id}/disable`, {});
+      await list('/api/admin/vehicles');
+    },
+    'delete-vehicle': async () => {
+      if (!confirm('Tem certeza que deseja excluir este veiculo?')) return;
+      await remove(`/api/admin/vehicles/${id}`);
+      await list('/api/admin/vehicles');
+    },
+    'edit-branch': () => editBranch(id),
+    'toggle-branch': () => toggleBranch(id),
+    'edit-admin': () => editAdmin(id),
+    'toggle-admin': () => toggleAdmin(id),
+  };
+
+  await actions[action]?.();
 }
 
 async function list(path) {
+  if (path === '/api/admin/trips') {
+    const params = new URLSearchParams();
+    const view = $('tripViewFilter')?.value || 'operational';
+    const status = $('tripStatusFilter')?.value;
+    const branchId = $('tripBranchFilter')?.value;
+
+    if (view) params.set('view', view);
+    if (status) params.set('status', status);
+    if (branchId) params.set('branchId', branchId);
+    path = `${path}${params.toString() ? `?${params}` : ''}`;
+  }
+
   const { response, body } = await request(path);
 
   if (!response?.ok) {
     return;
   }
 
-  if (path.startsWith('/api/drivers')) {
+  if (path.startsWith('/api/admin/drivers') || path.startsWith('/api/drivers')) {
     renderDrivers(body);
   }
 
-  if (path.startsWith('/api/vehicles')) {
+  if (path.startsWith('/api/admin/vehicles') || path.startsWith('/api/vehicles')) {
     renderVehicles(body);
   }
 
-  if (path.startsWith('/api/passengers')) {
+  if (path.startsWith('/api/admin/passengers') || path.startsWith('/api/passengers')) {
     renderPassengers(body);
   }
 
-  if (path.startsWith('/api/trips')) {
+  if (path.startsWith('/api/admin/trips') || path.startsWith('/api/trips')) {
     renderTrips(body);
   }
 
@@ -345,26 +661,79 @@ function cell(value) {
   return value === null || value === undefined || value === '' ? '-' : String(value);
 }
 
+function escapeHtml(value) {
+  return cell(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function fieldCell(source, name) {
+  return escapeHtml(field(source, name));
+}
+
+function technicalDetails(label, item, colspan) {
+  const id = escapeHtml(field(item, 'Id'));
+  const passengerId = escapeHtml(field(item, 'PassengerId'));
+  const driverId = escapeHtml(field(item, 'DriverId'));
+  const userId = escapeHtml(field(item, 'UserId'));
+  const branchId = escapeHtml(field(item, 'BranchId'));
+  const technical = [
+    id !== '-' ? `<span><strong>ID:</strong> ${id}</span>` : '',
+    passengerId !== '-' ? `<span><strong>Passageiro ID:</strong> ${passengerId}</span>` : '',
+    driverId !== '-' ? `<span><strong>Motorista ID:</strong> ${driverId}</span>` : '',
+    userId !== '-' ? `<span><strong>Usuario ID:</strong> ${userId}</span>` : '',
+    branchId !== '-' ? `<span><strong>Filial ID:</strong> ${branchId}</span>` : '',
+  ].filter(Boolean).join('');
+
+  return `
+    <tr class="details-row hidden" data-details-row="${label}-${id}">
+      <td colspan="${colspan}">
+        <details>
+          <summary>Detalhes tecnicos</summary>
+          <div class="details-grid">${technical || '<span>Sem dados tecnicos.</span>'}</div>
+        </details>
+      </td>
+    </tr>
+  `;
+}
+
+function actionButton(label, action, id, className = 'ghost') {
+  return `<button type="button" class="${className}" data-admin-action="${action}" data-id="${escapeHtml(id)}">${label}</button>`;
+}
+
+function rowActions(buttons) {
+  return `<div class="row-actions">${buttons.join('')}</div>`;
+}
+
 function renderDrivers(body) {
   const rows = pageItems(body);
   driversCache = rows;
   const table = $('driversTableBody');
 
   if (!rows.length) {
-    table.innerHTML = '<tr><td colspan="7">Nenhum motorista encontrado.</td></tr>';
+    table.innerHTML = '<tr><td colspan="8">Nenhum motorista encontrado.</td></tr>';
     updateDashboard();
     return;
   }
 
   table.innerHTML = rows.map((driver) => `
     <tr>
-      <td>${cell(field(driver, 'Name'))}<br><span class="muted">${cell(field(driver, 'Email'))}</span></td>
-      <td>${cell(field(driver, 'Phone'))}</td>
-      <td>${cell(field(driver, 'Cpf'))}</td>
-      <td>${cell(field(driver, 'Cnh'))} / ${cell(field(driver, 'CnhCategory'))}</td>
-      <td>${driverStatusLabel(field(driver, 'Status'))}</td>
-      <td>${approvalStatusLabel(field(driver, 'ApprovalStatus'))}</td>
-      <td>${field(driver, 'Active') ? 'Sim' : 'Nao'}</td>
+      <td>${fieldCell(driver, 'Name')}<br><span class="muted">${fieldCell(driver, 'Email')}</span></td>
+      <td>${fieldCell(driver, 'Phone')}</td>
+      <td>${fieldCell(driver, 'Cpf')}</td>
+      <td>${fieldCell(driver, 'Cnh')} / ${fieldCell(driver, 'CnhCategory')}<br><span class="muted">${fieldCell(driver, 'Vehicle')}</span></td>
+      <td>${escapeHtml(field(driver, 'StatusLabel') ?? driverStatusLabel(field(driver, 'Status')))}</td>
+      <td>${escapeHtml(field(driver, 'ApprovalStatusLabel') ?? approvalStatusLabel(field(driver, 'ApprovalStatus')))}</td>
+      <td>${escapeHtml(field(driver, 'ActiveLabel') ?? (field(driver, 'Active') ? 'Ativo' : 'Bloqueado'))}</td>
+      <td>${rowActions([
+        actionButton('Ver detalhes', 'toggle-driver-details', field(driver, 'Id')),
+        actionButton('Aprovar', 'approve-driver', field(driver, 'Id')),
+        actionButton('Bloquear', 'block-driver', field(driver, 'Id'), 'danger'),
+        actionButton('Excluir', 'delete-driver', field(driver, 'Id'), 'danger'),
+      ])}</td>
     </tr>
   `).join('');
   updateDashboard();
@@ -376,20 +745,26 @@ function renderVehicles(body) {
   const table = $('vehiclesTableBody');
 
   if (!rows.length) {
-    table.innerHTML = '<tr><td colspan="7">Nenhum veiculo encontrado.</td></tr>';
+    table.innerHTML = '<tr><td colspan="8">Nenhum veiculo encontrado.</td></tr>';
     updateDashboard();
     return;
   }
 
   table.innerHTML = rows.map((vehicle) => `
     <tr>
-      <td>${cell(field(vehicle, 'DriverName'))}</td>
-      <td>${cell(field(vehicle, 'Plate'))}</td>
-      <td>${cell(field(vehicle, 'Brand'))}</td>
-      <td>${cell(field(vehicle, 'Model'))}</td>
-      <td>${cell(field(vehicle, 'Year'))}</td>
-      <td>${cell(field(vehicle, 'Color'))}</td>
-      <td>${field(vehicle, 'Active') ? 'Sim' : 'Nao'}</td>
+      <td>${fieldCell(vehicle, 'DriverName')}<br><span class="muted">${fieldCell(vehicle, 'BranchName')}</span></td>
+      <td>${fieldCell(vehicle, 'Plate')}</td>
+      <td>${fieldCell(vehicle, 'Brand')}</td>
+      <td>${fieldCell(vehicle, 'Model')}</td>
+      <td>${fieldCell(vehicle, 'Year')}</td>
+      <td>${fieldCell(vehicle, 'Color')}</td>
+      <td>${escapeHtml(field(vehicle, 'StatusLabel') ?? (field(vehicle, 'Active') ? 'Ativo' : 'Inativo'))}</td>
+      <td>${rowActions([
+        actionButton('Ver detalhes', 'toggle-vehicle-details', field(vehicle, 'Id')),
+        actionButton('Aprovar', 'approve-vehicle', field(vehicle, 'Id')),
+        actionButton('Desativar', 'disable-vehicle', field(vehicle, 'Id'), 'danger'),
+        actionButton('Excluir', 'delete-vehicle', field(vehicle, 'Id'), 'danger'),
+      ])}</td>
     </tr>
   `).join('');
   updateDashboard();
@@ -401,19 +776,25 @@ function renderPassengers(body) {
   const table = $('passengersTableBody');
 
   if (!rows.length) {
-    table.innerHTML = '<tr><td colspan="6">Nenhum passageiro encontrado.</td></tr>';
+    table.innerHTML = '<tr><td colspan="7">Nenhum passageiro encontrado.</td></tr>';
     updateDashboard();
     return;
   }
 
   table.innerHTML = rows.map((passenger) => `
     <tr>
-      <td>${cell(field(passenger, 'Name'))}<br><span class="muted">${cell(field(passenger, 'Email'))}</span></td>
-      <td>${cell(field(passenger, 'Phone'))}</td>
-      <td>${cell(field(passenger, 'Cpf'))}</td>
-      <td>${cell(field(passenger, 'Address'))}<br><span class="muted">CEP ${cell(field(passenger, 'ZipCode'))}</span></td>
-      <td>${cell(field(passenger, 'City'))}/${cell(field(passenger, 'State'))}</td>
-      <td>${field(passenger, 'Active') ? 'Sim' : 'Nao'}</td>
+      <td>${fieldCell(passenger, 'Name')}<br><span class="muted">${fieldCell(passenger, 'Email')}</span></td>
+      <td>${fieldCell(passenger, 'Phone')}</td>
+      <td>${fieldCell(passenger, 'Cpf')}</td>
+      <td>${fieldCell(passenger, 'Address')}<br><span class="muted">CEP ${fieldCell(passenger, 'ZipCode')}</span></td>
+      <td>${fieldCell(passenger, 'City')}/${fieldCell(passenger, 'State')}</td>
+      <td>${escapeHtml(field(passenger, 'StatusLabel') ?? (field(passenger, 'Active') ? 'Aprovado' : 'Bloqueado'))}</td>
+      <td>${rowActions([
+        actionButton('Ver detalhes', 'toggle-passenger-details', field(passenger, 'Id')),
+        actionButton('Aprovar', 'approve-passenger', field(passenger, 'Id')),
+        actionButton('Bloquear', 'block-passenger', field(passenger, 'Id'), 'danger'),
+        actionButton('Excluir', 'delete-passenger', field(passenger, 'Id'), 'danger'),
+      ])}</td>
     </tr>
   `).join('');
   updateDashboard();
@@ -425,19 +806,27 @@ function renderTrips(body) {
   const table = $('tripsTableBody');
 
   if (!rows.length) {
-    table.innerHTML = '<tr><td colspan="6">Nenhuma corrida encontrada.</td></tr>';
+    table.innerHTML = '<tr><td colspan="9">Nenhuma corrida encontrada.</td></tr>';
     updateDashboard();
     return;
   }
 
   table.innerHTML = rows.map((trip) => `
     <tr>
-      <td>${statusLabel(field(trip, 'Status'))}</td>
-      <td>${cell(field(trip, 'Origin'))}</td>
-      <td>${cell(field(trip, 'Destination'))}</td>
-      <td>${cell(field(trip, 'PassengerName') ?? field(trip, 'PassengerId'))}</td>
-      <td>${cell(field(trip, 'DriverId'))}</td>
-      <td>R$ ${cell(field(trip, 'Price'))}</td>
+      <td><strong>${fieldCell(trip, 'ShortCode')}</strong></td>
+      <td>${escapeHtml(field(trip, 'StatusLabel') ?? statusLabel(field(trip, 'Status')))}</td>
+      <td>${fieldCell(trip, 'PassengerName')}<br><span class="muted">${fieldCell(trip, 'PassengerPhone')}</span></td>
+      <td>${fieldCell(trip, 'DriverName')}<br><span class="muted">${fieldCell(trip, 'Vehicle')}</span></td>
+      <td>${fieldCell(trip, 'OriginShort')}</td>
+      <td>${fieldCell(trip, 'DestinationShort')}</td>
+      <td>${currency(field(trip, 'FareAmount') ?? field(trip, 'Price'))}</td>
+      <td>${formatDate(field(trip, 'CreatedAt'))}</td>
+      <td>${rowActions([
+        actionButton('Ver detalhes', 'toggle-trip-details', field(trip, 'Id')),
+        actionButton('Cancelar', 'cancel-trip', field(trip, 'Id'), 'danger'),
+        actionButton('Finalizar', 'finish-trip-admin', field(trip, 'Id')),
+        actionButton('Reenviar', 'redispatch-trip', field(trip, 'Id')),
+      ])}</td>
     </tr>
   `).join('');
   updateDashboard();
@@ -451,17 +840,21 @@ function renderBranches(body) {
   renderBranchOptions();
 
   if (!rows.length) {
-    table.innerHTML = '<tr><td colspan="5">Nenhuma filial encontrada.</td></tr>';
+    table.innerHTML = '<tr><td colspan="6">Nenhuma filial encontrada.</td></tr>';
     return;
   }
 
   table.innerHTML = rows.map((branch) => `
     <tr>
-      <td>${cell(field(branch, 'Name'))}</td>
-      <td>${cell(field(branch, 'City'))}/${cell(field(branch, 'State'))}</td>
-      <td>${cell(field(branch, 'Address'))}</td>
-      <td>${cell(field(branch, 'Phone'))}</td>
-      <td>${field(branch, 'Active') ? 'Sim' : 'Nao'}</td>
+      <td>${fieldCell(branch, 'Name')}</td>
+      <td>${fieldCell(branch, 'City')}/${fieldCell(branch, 'State')}</td>
+      <td>${fieldCell(branch, 'Address')}</td>
+      <td>${fieldCell(branch, 'Phone')}</td>
+      <td>${field(branch, 'Active') ? 'Ativa' : 'Inativa'}</td>
+      <td>${rowActions([
+        actionButton('Editar', 'edit-branch', field(branch, 'Id')),
+        actionButton(field(branch, 'Active') ? 'Desativar' : 'Ativar', 'toggle-branch', field(branch, 'Id'), field(branch, 'Active') ? 'danger' : 'ghost'),
+      ])}</td>
     </tr>
   `).join('');
 }
@@ -471,10 +864,21 @@ function renderBranchOptions() {
     .concat(branchesCache.map((branch) => `<option value="${field(branch, 'Id')}">${cell(field(branch, 'Name'))}</option>`))
     .join('');
 
+  const filterOptions = ['<option value="">Todas as filiais</option>']
+    .concat(branchesCache.map((branch) => `<option value="${field(branch, 'Id')}">${cell(field(branch, 'Name'))}</option>`))
+    .join('');
+
   ['adminBranch', 'fareBranch'].forEach((id) => {
     const select = $(id);
     if (select) select.innerHTML = options;
   });
+
+  const tripBranchFilter = $('tripBranchFilter');
+  if (tripBranchFilter) {
+    const selected = tripBranchFilter.value;
+    tripBranchFilter.innerHTML = filterOptions;
+    tripBranchFilter.value = selected;
+  }
 }
 
 function renderAdmins(body) {
@@ -483,17 +887,21 @@ function renderAdmins(body) {
   const table = $('adminsTableBody');
 
   if (!rows.length) {
-    table.innerHTML = '<tr><td colspan="5">Nenhum admin encontrado.</td></tr>';
+    table.innerHTML = '<tr><td colspan="6">Nenhum admin encontrado.</td></tr>';
     return;
   }
 
   table.innerHTML = rows.map((admin) => `
     <tr>
-      <td>${cell(field(admin, 'Name'))}</td>
-      <td>${cell(field(admin, 'Email'))}</td>
-      <td>${cell(field(admin, 'AdminType'))}</td>
-      <td>${cell(field(admin, 'BranchName'))}</td>
-      <td>${field(admin, 'Active') ? 'Sim' : 'Nao'}</td>
+      <td>${fieldCell(admin, 'Name')}</td>
+      <td>${fieldCell(admin, 'Email')}</td>
+      <td>${fieldCell(admin, 'AdminType')}</td>
+      <td>${fieldCell(admin, 'BranchName')}</td>
+      <td>${field(admin, 'Active') ? 'Ativo' : 'Inativo'}</td>
+      <td>${rowActions([
+        actionButton('Editar', 'edit-admin', field(admin, 'Id')),
+        actionButton(field(admin, 'Active') ? 'Desativar' : 'Ativar', 'toggle-admin', field(admin, 'Id'), field(admin, 'Active') ? 'danger' : 'ghost'),
+      ])}</td>
     </tr>
   `).join('');
 }
@@ -515,7 +923,7 @@ function renderFares(body) {
       <td>R$ ${cell(field(fare, 'PricePerKm'))}</td>
       <td>R$ ${cell(field(fare, 'PricePerMinute'))}</td>
       <td>R$ ${cell(field(fare, 'MinimumFare'))}</td>
-      <td>${field(fare, 'Active') ? 'Sim' : 'Nao'}</td>
+      <td>${field(fare, 'Active') ? 'Ativa' : 'Inativa'}</td>
     </tr>
   `).join('');
 }
@@ -528,24 +936,27 @@ function upsertTrip(trip) {
 
 function updateDashboard() {
   const today = new Date().toISOString().slice(0, 10);
-  const waiting = tripsCache.filter((trip) => statusLabel(field(trip, 'Status')) === 'Solicitada').length;
+  const waiting = tripsCache.filter((trip) => statusLabel(field(trip, 'Status')) === 'Aguardando motorista').length;
   const active = tripsCache.filter((trip) => ['Aceita', 'Em andamento'].includes(statusLabel(field(trip, 'Status')))).length;
   const finishedToday = tripsCache.filter((trip) => {
     const status = statusLabel(field(trip, 'Status'));
     const createdAt = String(field(trip, 'CreatedAt') ?? '');
     return status === 'Finalizada' && createdAt.startsWith(today);
   }).length;
-  const onlineDrivers = driversCache.filter((driver) => driverStatusLabel(field(driver, 'Status')) === 'Online').length;
+  const onlineDrivers = driversCache.filter((driver) => {
+    const status = field(driver, 'Status');
+    return status === 'Online' || status === 2 || status === '2';
+  }).length;
+  const revenueToday = tripsCache
+    .filter((trip) => String(field(trip, 'CreatedAt') ?? '').startsWith(today))
+    .reduce((total, trip) => total + Number(field(trip, 'FareAmount') ?? field(trip, 'Price') ?? 0), 0);
 
   $('waitingTripsMetric').textContent = waiting;
   $('activeTripsMetric').textContent = active;
   $('onlineDriversMetric').textContent = onlineDrivers;
   $('passengersMetric').textContent = passengersCache.length;
   $('finishedTodayMetric').textContent = finishedToday;
-  $('lastUpdateMetric').textContent = new Date().toLocaleTimeString('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  $('revenueTodayMetric').textContent = currency(revenueToday);
 }
 
 async function refreshActivePanel() {
@@ -556,26 +967,26 @@ async function refreshActivePanel() {
 
   if (activePanel === 'dashboard') {
     await Promise.all([
-      list('/api/trips'),
-      list('/api/drivers'),
-      list('/api/passengers'),
+      list('/api/admin/trips'),
+      list('/api/admin/drivers'),
+      list('/api/admin/passengers'),
       list('/api/branches'),
     ]);
     return;
   }
 
   if (activePanel === 'motoristas') {
-    await list('/api/drivers');
+    await list('/api/admin/drivers');
     return;
   }
 
   if (activePanel === 'passageiros') {
-    await list('/api/passengers');
+    await list('/api/admin/passengers');
     return;
   }
 
   if (activePanel === 'veiculos') {
-    await list('/api/vehicles');
+    await list('/api/admin/vehicles');
     return;
   }
 
@@ -596,18 +1007,24 @@ async function refreshActivePanel() {
     return;
   }
 
-  await list('/api/trips');
+  if (activePanel === 'corridas' || activePanel === 'mapa') {
+    await list('/api/branches');
+    await list('/api/admin/trips');
+    return;
+  }
+
+  await list('/api/admin/trips');
 }
 
 function driverStatusLabel(status) {
   return {
-    1: 'Offline',
-    2: 'Online',
-    3: 'Ocupado',
+    1: 'Inativo',
+    2: 'Ativo',
+    3: 'Em corrida',
     4: 'Pausado',
-    Offline: 'Offline',
-    Online: 'Online',
-    Busy: 'Ocupado',
+    Offline: 'Inativo',
+    Online: 'Ativo',
+    Busy: 'Em corrida',
     Paused: 'Pausado',
   }[String(status)] ?? cell(status);
 }
@@ -615,13 +1032,12 @@ function driverStatusLabel(status) {
 function approvalStatusLabel(status) {
   return {
     0: 'Pendente',
-    1: 'Em analise',
+    1: 'Pendente',
     2: 'Aprovado',
-    3: 'Rejeitado',
+    3: 'Recusado',
     Pending: 'Pendente',
-    UnderReview: 'Em analise',
     Approved: 'Aprovado',
-    Rejected: 'Rejeitado',
+    Rejected: 'Recusado',
   }[String(status)] ?? cell(status);
 }
 
@@ -716,32 +1132,43 @@ async function finishTrip() {
 }
 
 async function saveBranch() {
-  const { response } = await post('/api/branches', {
+  const branchId = $('branchId').value.trim();
+  const payload = {
     name: $('branchName').value.trim(),
     city: $('branchCity').value.trim(),
     state: $('branchState').value.trim(),
     address: $('branchAddress').value.trim(),
     phone: $('branchPhone').value.trim(),
     active: boolValue('branchActive'),
-  });
+  };
+  const { response } = branchId
+    ? await put(`/api/branches/${branchId}`, payload)
+    : await post('/api/branches', payload);
 
   if (response?.ok) {
+    $('branchId').value = '';
     await list('/api/branches');
   }
 }
 
 async function saveAdmin() {
   const branchId = $('adminBranch').value || null;
-  const { response } = await post('/api/admin-users', {
+  const adminId = $('adminId').value.trim();
+  const payload = {
     name: $('adminName').value.trim(),
     email: $('adminEmail').value.trim(),
     password: $('adminPassword').value,
     adminType: Number.parseInt($('adminType').value, 10),
     branchId,
     active: boolValue('adminActive'),
-  });
+  };
+  const { response } = adminId
+    ? await put(`/api/admin-users/${adminId}`, payload)
+    : await post('/api/admin-users', payload);
 
   if (response?.ok) {
+    $('adminId').value = '';
+    $('adminPassword').value = '';
     await list('/api/admin-users');
   }
 }
@@ -766,7 +1193,7 @@ async function saveFare() {
 
 async function connectRealtime() {
   if (!window.signalR) {
-    setLiveStatus('SignalR JS nao carregado.');
+    setLiveStatus('Offline');
     return;
   }
 
@@ -776,8 +1203,13 @@ async function connectRealtime() {
     if (hubConnection.state === signalR.HubConnectionState.Connected) {
       return;
     }
-    await hubConnection.start();
-    setLiveStatus('SignalR conectado.');
+    try {
+      await hubConnection.start();
+      setLiveStatus('Online');
+    } catch (error) {
+      setLiveStatus('Offline');
+      show('SIGNALR', String(error));
+    }
     return;
   }
 
@@ -810,13 +1242,18 @@ async function connectRealtime() {
     show('SIGNALR', { event: 'DriverLocationUpdated', data: location });
   });
 
-  hubConnection.onreconnecting(() => setLiveStatus('SignalR reconectando...'));
-  hubConnection.onreconnected(() => setLiveStatus('SignalR conectado novamente.'));
-  hubConnection.onclose(() => setLiveStatus('SignalR desconectado.'));
+  hubConnection.onreconnecting(() => setLiveStatus('Reconectando'));
+  hubConnection.onreconnected(() => setLiveStatus('Online'));
+  hubConnection.onclose(() => setLiveStatus('Offline'));
 
-  await hubConnection.start();
-  hubConnection.baseUrl = hubUrl;
-  setLiveStatus('SignalR conectado.');
+  try {
+    await hubConnection.start();
+    hubConnection.baseUrl = hubUrl;
+    setLiveStatus('Online');
+  } catch (error) {
+    setLiveStatus('Offline');
+    show('SIGNALR', String(error));
+  }
 }
 
 $('loginButton').addEventListener('click', login);
@@ -831,7 +1268,7 @@ $('clearTokenButton').addEventListener('click', () => {
   document.body.classList.add('auth-locked');
   setCurrentTripSummary(null);
   show(0, 'Login removido deste navegador.');
-  setLiveStatus('SignalR desconectado.');
+  setLiveStatus('Offline');
   setButtonStates();
 });
 $('createTripButton').addEventListener('click', createTrip);
@@ -841,6 +1278,11 @@ $('acceptTripButton').addEventListener('click', acceptTrip);
 $('startTripButton').addEventListener('click', startTrip);
 $('finishTripButton').addEventListener('click', finishTrip);
 $('refreshAllButton').addEventListener('click', refreshActivePanel);
+$('cancelOldTripsButton').addEventListener('click', async () => {
+  if (!confirm('Tem certeza que deseja cancelar corridas pendentes antigas?')) return;
+  await post('/api/admin/trips/cancel-old-pending', {});
+  await list('/api/admin/trips');
+});
 $('saveBranchButton').addEventListener('click', saveBranch);
 $('saveAdminButton').addEventListener('click', saveAdmin);
 $('saveFareButton').addEventListener('click', saveFare);
@@ -853,21 +1295,38 @@ document.querySelectorAll('[data-panel-target]').forEach((button) => {
   button.addEventListener('click', () => showPanel(button.dataset.panelTarget));
 });
 
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-admin-action]');
+
+  if (!button) {
+    return;
+  }
+
+  await runAdminAction(button.dataset.adminAction, button.dataset.id);
+});
+
+['tripViewFilter', 'tripStatusFilter', 'tripBranchFilter'].forEach((id) => {
+  const filter = $(id);
+  if (filter) {
+    filter.addEventListener('change', () => list('/api/admin/trips'));
+  }
+});
+
+$('closeDetailsButton').addEventListener('click', () => $('detailsModal').close());
+
 ['tripId', 'driverId'].forEach((id) => {
   $(id).addEventListener('input', setButtonStates);
 });
 
 async function bootstrapAdminPanel() {
-  const savedBaseUrl = localStorage.getItem(adminBaseUrlKey);
-  if (savedBaseUrl) {
-    $('baseUrl').value = savedBaseUrl;
-  }
+  $('baseUrl').value = localApiBaseUrl();
 
   initMap();
   showPanel(activePanel);
 
   if (accessToken) {
     $('tokenStatus').textContent = 'Conectado';
+    $('loggedUser').textContent = 'Admin';
     document.body.classList.remove('auth-locked');
     await connectRealtime();
     await refreshActivePanel();

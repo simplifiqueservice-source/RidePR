@@ -13,7 +13,6 @@
         <strong>RidePR</strong>
         <span>Admin</span>
       </div>
-      <button class="tab-button active" data-panel-target="dashboard" type="button">Dashboard</button>
       <button class="tab-button" data-panel-target="corridas" type="button">Corridas</button>
       <button class="tab-button" data-panel-target="mapa" type="button">Mapa</button>
       <button class="tab-button" data-panel-target="motoristas" type="button">Motoristas</button>
@@ -28,28 +27,29 @@
     <main class="workspace">
       <header class="topbar">
         <div>
-          <h1 id="pageTitle">Dashboard</h1>
-          <p id="liveStatus">SignalR desconectado.</p>
+          <h1 id="pageTitle">Corridas</h1>
+          <p><span id="liveStatus" class="status-badge offline">Offline</span></p>
         </div>
         <div class="top-actions">
+          <span id="loggedUser" class="logged-user">Admin</span>
           <button id="refreshAllButton" type="button">Atualizar</button>
           <button id="clearTokenButton" type="button" class="ghost">Sair</button>
         </div>
       </header>
 
-      <section class="login-strip" data-panel="dashboard corridas mapa motoristas passageiros veiculos admins filiais tarifas config">
+      <section class="login-strip" data-panel="corridas mapa motoristas passageiros veiculos admins filiais tarifas config">
         <div class="login-title">
           <strong>Entrar no RidePR Admin</strong>
           <span>Faca login para acessar corridas, mapa e cadastros.</span>
         </div>
-        <input id="baseUrl" value="http://45.185.199.173:8282" aria-label="API baseUrl" />
+        <input id="baseUrl" type="hidden" value="http://127.0.0.1:8282" />
         <input id="email" value="admin@ridepr.test" autocomplete="username" aria-label="E-mail" />
         <input id="password" value="Senha123!" type="password" autocomplete="current-password" aria-label="Senha" />
         <button id="loginButton" type="button">Entrar</button>
         <span id="tokenStatus">Sem login</span>
       </section>
 
-      <section class="dashboard" data-panel="dashboard corridas mapa motoristas passageiros veiculos admins filiais tarifas">
+      <section class="dashboard" data-panel="corridas">
         <article class="metric">
           <span>Corridas aguardando</span>
           <strong id="waitingTripsMetric">0</strong>
@@ -71,17 +71,17 @@
           <strong id="finishedTodayMetric">0</strong>
         </article>
         <article class="metric">
-          <span>Ultima atualizacao</span>
-          <strong id="lastUpdateMetric">-</strong>
+          <span>Receita estimada hoje</span>
+          <strong id="revenueTodayMetric">R$ 0,00</strong>
         </article>
       </section>
 
-      <section class="split" data-panel="dashboard corridas mapa">
-        <div class="panel flow-panel" data-panel="corridas">
-          <h2>Operacao de corrida</h2>
+      <section class="split dev-tools hidden" data-panel="config">
+        <div class="panel flow-panel">
+          <h2>Ferramentas de desenvolvimento</h2>
           <div class="field-line">
             <label>Passageiro</label>
-            <input id="passengerId" value="9e0d144e-6446-4f6a-a016-ac7cecd2d7b8" placeholder="GUID do passageiro" />
+            <input id="passengerId" value="" placeholder="Identificador tecnico" />
           </div>
           <div class="field-line">
             <label>Origem</label>
@@ -101,10 +101,10 @@
           <button id="getTripButton" type="button" class="ghost wide-button">Buscar status</button>
 
           <details>
-            <summary>Campos avancados</summary>
+            <summary>Detalhes tecnicos</summary>
             <div class="grid compact">
-              <label>TripId<input id="tripId" placeholder="preenchido ao criar corrida" /></label>
-              <label>DriverId<input id="driverId" value="d4ff8255-d3fe-4fb6-9fb9-2daaae8398c1" /></label>
+              <label>Corrida tecnica<input id="tripId" placeholder="preenchido ao criar corrida" /></label>
+              <label>Motorista tecnico<input id="driverId" value="d4ff8255-d3fe-4fb6-9fb9-2daaae8398c1" /></label>
               <label>Lat origem<input id="originLatitude" value="-23.55052" /></label>
               <label>Lng origem<input id="originLongitude" value="-46.63331" /></label>
               <label>Lat destino<input id="destinationLatitude" value="-23.56141" /></label>
@@ -116,34 +116,53 @@
           </details>
         </div>
 
-        <div class="panel map-panel" data-panel="corridas mapa">
+      <section class="panel map-panel wide" data-panel="mapa">
           <div class="panel-title">
             <h2>Mapa ao vivo</h2>
             <span>Origem, destino e motorista</span>
           </div>
           <div id="map"></div>
-        </div>
       </section>
 
       <section class="panel wide" data-panel="corridas">
         <div class="panel-title">
           <h2>Corridas</h2>
-          <button data-list="/api/trips" type="button" class="ghost">Recarregar</button>
+          <div class="inline-filters">
+            <select id="tripViewFilter" aria-label="Periodo das corridas">
+              <option value="operational">Hoje e ativas</option>
+              <option value="today">Hoje</option>
+              <option value="all">Todas</option>
+            </select>
+            <select id="tripStatusFilter" aria-label="Status da corrida">
+              <option value="">Todos os status</option>
+              <option value="Requested">Aguardando motorista</option>
+              <option value="Accepted">Aceita</option>
+              <option value="InProgress">Em andamento</option>
+              <option value="Finished">Finalizada</option>
+              <option value="Cancelled">Cancelada</option>
+            </select>
+            <select id="tripBranchFilter" aria-label="Filial da corrida"></select>
+            <button data-list="/api/admin/trips" type="button" class="ghost">Recarregar</button>
+            <button id="cancelOldTripsButton" type="button" class="danger">Cancelar antigas</button>
+          </div>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
+                <th>Codigo</th>
                 <th>Status</th>
-                <th>Origem</th>
-                <th>Destino</th>
                 <th>Passageiro</th>
                 <th>Motorista</th>
+                <th>Origem</th>
+                <th>Destino</th>
                 <th>Valor</th>
+                <th>Criada em</th>
+                <th>Acoes</th>
               </tr>
             </thead>
             <tbody id="tripsTableBody">
-              <tr><td colspan="6">Clique em Recarregar ou crie uma corrida.</td></tr>
+              <tr><td colspan="9">Clique em Recarregar.</td></tr>
             </tbody>
           </table>
         </div>
@@ -152,7 +171,7 @@
       <section class="panel wide" data-panel="motoristas">
         <div class="panel-title">
           <h2>Motoristas</h2>
-          <button data-list="/api/drivers" type="button" class="ghost">Recarregar</button>
+          <button data-list="/api/admin/drivers" type="button" class="ghost">Recarregar</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -165,10 +184,11 @@
                 <th>Status</th>
                 <th>Aprovacao</th>
                 <th>Ativo</th>
+                <th>Acoes</th>
               </tr>
             </thead>
             <tbody id="driversTableBody">
-              <tr><td colspan="7">Clique em Recarregar.</td></tr>
+              <tr><td colspan="8">Clique em Recarregar.</td></tr>
             </tbody>
           </table>
         </div>
@@ -177,7 +197,7 @@
       <section class="panel wide" data-panel="passageiros">
         <div class="panel-title">
           <h2>Passageiros</h2>
-          <button data-list="/api/passengers" type="button" class="ghost">Recarregar</button>
+          <button data-list="/api/admin/passengers" type="button" class="ghost">Recarregar</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -189,10 +209,11 @@
                 <th>Endereco</th>
                 <th>Cidade/UF</th>
                 <th>Ativo</th>
+                <th>Acoes</th>
               </tr>
             </thead>
             <tbody id="passengersTableBody">
-              <tr><td colspan="6">Clique em Recarregar.</td></tr>
+              <tr><td colspan="7">Clique em Recarregar.</td></tr>
             </tbody>
           </table>
         </div>
@@ -201,7 +222,7 @@
       <section class="panel wide" data-panel="veiculos">
         <div class="panel-title">
           <h2>Veiculos</h2>
-          <button data-list="/api/vehicles" type="button" class="ghost">Recarregar</button>
+          <button data-list="/api/admin/vehicles" type="button" class="ghost">Recarregar</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -214,10 +235,11 @@
                 <th>Ano</th>
                 <th>Cor</th>
                 <th>Ativo</th>
+                <th>Acoes</th>
               </tr>
             </thead>
             <tbody id="vehiclesTableBody">
-              <tr><td colspan="7">Clique em Recarregar.</td></tr>
+              <tr><td colspan="8">Clique em Recarregar.</td></tr>
             </tbody>
           </table>
         </div>
@@ -229,6 +251,7 @@
           <button data-list="/api/admin-users" type="button" class="ghost">Recarregar</button>
         </div>
         <div class="grid compact">
+          <input id="adminId" type="hidden" />
           <label>Nome<input id="adminName" /></label>
           <label>E-mail<input id="adminEmail" /></label>
           <label>Senha<input id="adminPassword" type="password" /></label>
@@ -250,9 +273,9 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Nome</th><th>E-mail</th><th>Tipo</th><th>Filial</th><th>Ativo</th></tr>
+              <tr><th>Nome</th><th>E-mail</th><th>Tipo</th><th>Filial</th><th>Status</th><th>Acoes</th></tr>
             </thead>
-            <tbody id="adminsTableBody"><tr><td colspan="5">Clique em Recarregar.</td></tr></tbody>
+            <tbody id="adminsTableBody"><tr><td colspan="6">Clique em Recarregar.</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -263,6 +286,7 @@
           <button data-list="/api/branches" type="button" class="ghost">Recarregar</button>
         </div>
         <div class="grid compact">
+          <input id="branchId" type="hidden" />
           <label>Nome<input id="branchName" /></label>
           <label>Cidade<input id="branchCity" /></label>
           <label>UF<input id="branchState" maxlength="2" /></label>
@@ -279,9 +303,9 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Nome</th><th>Cidade/UF</th><th>Endereco</th><th>Telefone</th><th>Ativa</th></tr>
+              <tr><th>Nome</th><th>Cidade/UF</th><th>Endereco</th><th>Telefone</th><th>Status</th><th>Acoes</th></tr>
             </thead>
-            <tbody id="branchesTableBody"><tr><td colspan="5">Clique em Recarregar.</td></tr></tbody>
+            <tbody id="branchesTableBody"><tr><td colspan="6">Clique em Recarregar.</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -316,8 +340,16 @@
       </section>
     </main>
 
+    <dialog id="detailsModal" class="details-modal">
+      <div class="modal-header">
+        <h2 id="detailsTitle">Detalhes</h2>
+        <button id="closeDetailsButton" type="button" class="ghost">Fechar</button>
+      </div>
+      <div id="detailsContent" class="details-content"></div>
+    </dialog>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
-    <script src="./app.js?v=202607051700"></script>
+    <script src="./app.js?v=202607061810"></script>
   </body>
 </html>

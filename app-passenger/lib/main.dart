@@ -11,6 +11,13 @@ import 'package:signalr_netcore/signalr_client.dart' hide ConnectionState;
 
 const defaultApiBaseUrl = 'http://45.185.199.173:8282';
 
+class AppConfig {
+  static const apiBaseUrl = String.fromEnvironment(
+    'RIDEPR_API_URL',
+    defaultValue: defaultApiBaseUrl,
+  );
+}
+
 void main() {
   runApp(const RidePrMvpTestApp());
 }
@@ -142,7 +149,7 @@ class MvpTestHome extends StatefulWidget {
 }
 
 class _MvpTestHomeState extends State<MvpTestHome> {
-  final baseUrlController = TextEditingController(text: defaultApiBaseUrl);
+  final baseUrlController = TextEditingController(text: AppConfig.apiBaseUrl);
   final nameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
@@ -255,7 +262,6 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
     if (!loggedIn) {
       return _PassengerAuthPage(
-        baseUrlController: baseUrlController,
         nameController: nameController,
         emailController: emailController,
         passwordController: passwordController,
@@ -356,8 +362,6 @@ class _MvpTestHomeState extends State<MvpTestHome> {
                 leading: const Icon(Icons.settings),
                 title: const Text('Configuracoes'),
                 children: [
-                  _Input(
-                      controller: baseUrlController, label: 'Endereco da API'),
                   SwitchListTile(
                     value: debugVisible,
                     onChanged: (value) => setState(() => debugVisible = value),
@@ -560,7 +564,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
   Future<void> _restoreSession() async {
     final prefs = await SharedPreferences.getInstance();
 
-    baseUrlController.text = prefs.getString('baseUrl') ?? defaultApiBaseUrl;
+    baseUrlController.text = AppConfig.apiBaseUrl;
     api.baseUrl = baseUrlController.text;
 
     if (mounted) {
@@ -570,7 +574,6 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
   Future<void> _rememberSession(Map<String, dynamic> data) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('baseUrl', api.baseUrl);
     await prefs.setString('accessToken', accessToken ?? '');
     await prefs.setString('userId', userId ?? '');
     await prefs.setString('name', '${data['name'] ?? ''}');
@@ -1167,7 +1170,6 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
 class _PassengerAuthPage extends StatefulWidget {
   const _PassengerAuthPage({
-    required this.baseUrlController,
     required this.nameController,
     required this.emailController,
     required this.passwordController,
@@ -1180,7 +1182,6 @@ class _PassengerAuthPage extends StatefulWidget {
     required this.onToggleDebug,
   });
 
-  final TextEditingController baseUrlController;
   final TextEditingController nameController;
   final TextEditingController emailController;
   final TextEditingController passwordController;
@@ -1199,7 +1200,6 @@ class _PassengerAuthPage extends StatefulWidget {
 class _PassengerAuthPageState extends State<_PassengerAuthPage> {
   String mode = 'entry';
 
-  TextEditingController get baseUrlController => widget.baseUrlController;
   TextEditingController get nameController => widget.nameController;
   TextEditingController get emailController => widget.emailController;
   TextEditingController get passwordController => widget.passwordController;
@@ -1306,10 +1306,6 @@ class _PassengerAuthPageState extends State<_PassengerAuthPage> {
                   leading: const Icon(Icons.settings),
                   title: const Text('Configuracoes'),
                   children: [
-                    _Input(
-                      controller: baseUrlController,
-                      label: 'Endereco da API',
-                    ),
                     TextButton.icon(
                       onPressed: onToggleDebug,
                       icon: const Icon(Icons.bug_report),

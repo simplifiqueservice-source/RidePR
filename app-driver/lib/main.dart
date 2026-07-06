@@ -162,13 +162,9 @@ class AuthSession {
   bool get isAuthenticated =>
       api.accessToken != null && api.accessToken!.isNotEmpty;
 
-  Future<void> restore() async {
-    final prefs = await SharedPreferences.getInstance();
-    api.baseUrl = prefs.getString('baseUrl') ?? api.baseUrl;
-  }
+  Future<void> restore() async {}
 
-  Future<void> login(String baseUrl, String email, String password) async {
-    api.baseUrl = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+  Future<void> login(String email, String password) async {
     final data = await api.post('/api/auth/login', {
       'email': email,
       'password': password,
@@ -182,7 +178,6 @@ class AuthSession {
     role = data['role'] as String?;
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('baseUrl', api.baseUrl);
     await prefs.setString('accessToken', api.accessToken ?? '');
     await prefs.setString('refreshToken', refreshToken ?? '');
     await prefs.setString('userId', userId ?? '');
@@ -192,12 +187,10 @@ class AuthSession {
   }
 
   Future<void> register(
-    String baseUrl,
     String name,
     String email,
     String password,
   ) async {
-    api.baseUrl = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     final data = await api.post('/api/auth/register', {
       'name': name.trim().isEmpty ? 'Motorista RidePR' : name.trim(),
       'email': email.trim(),
@@ -213,7 +206,6 @@ class AuthSession {
     role = data['role'] as String?;
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('baseUrl', api.baseUrl);
     await prefs.setString('accessToken', api.accessToken ?? '');
     await prefs.setString('refreshToken', refreshToken ?? '');
     await prefs.setString('userId', userId ?? '');
@@ -249,7 +241,6 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  late final baseUrl = TextEditingController(text: widget.session.api.baseUrl);
   final name = TextEditingController();
   final email = TextEditingController();
   final password = TextEditingController();
@@ -260,7 +251,6 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
-    baseUrl.dispose();
     name.dispose();
     email.dispose();
     password.dispose();
@@ -295,8 +285,6 @@ class _LoginPageState extends State<LoginPage> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 28),
-                if (mode != 'entry')
-                  _Input(controller: baseUrl, label: 'Endereco da API'),
                 if (mode == 'register') _Input(controller: name, label: 'Nome'),
                 if (mode != 'entry') _Input(controller: email, label: 'E-mail'),
                 if (mode != 'entry')
@@ -375,7 +363,6 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       await widget.session.login(
-        baseUrl.text.trim(),
         email.text.trim(),
         password.text,
       );
@@ -410,7 +397,6 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       await widget.session.register(
-        baseUrl.text.trim(),
         name.text.trim(),
         email.text.trim(),
         password.text,
