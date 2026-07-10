@@ -82,10 +82,10 @@
 
       <section class="split dev-tools hidden" data-panel="config">
         <div class="panel flow-panel">
-          <h2>Ferramentas de desenvolvimento</h2>
+          <h2>Operacoes assistidas</h2>
           <div class="field-line">
             <label>Passageiro</label>
-            <input id="passengerId" value="" placeholder="Identificador tecnico" />
+            <input id="passengerId" value="" />
           </div>
           <div class="field-line">
             <label>Origem</label>
@@ -107,8 +107,8 @@
           <details>
             <summary>Detalhes tecnicos</summary>
             <div class="grid compact">
-              <label>Corrida tecnica<input id="tripId" placeholder="preenchido ao criar corrida" /></label>
-              <label>Motorista tecnico<input id="driverId" value="d4ff8255-d3fe-4fb6-9fb9-2daaae8398c1" /></label>
+              <label>Corrida<input id="tripId" /></label>
+              <label>Motorista<input id="driverId" value="" /></label>
               <label>Lat origem<input id="originLatitude" value="-23.55052" /></label>
               <label>Lng origem<input id="originLongitude" value="-46.63331" /></label>
               <label>Lat destino<input id="destinationLatitude" value="-23.56141" /></label>
@@ -119,13 +119,24 @@
             </div>
           </details>
         </div>
+      </section>
 
       <section class="panel map-panel wide" data-panel="mapa">
           <div class="panel-title">
             <h2>Mapa ao vivo</h2>
-            <span>Origem, destino e motorista</span>
+            <span id="mapLiveStatus">Nenhuma corrida ativa no momento.</span>
           </div>
           <div id="map"></div>
+          <div class="map-summary">
+            <div>
+              <strong>Motoristas online</strong>
+              <span id="mapDriversSummary">0 motoristas online</span>
+            </div>
+            <div>
+              <strong>Corridas ativas</strong>
+              <span id="mapTripsSummary">Nenhuma corrida ativa no momento.</span>
+            </div>
+          </div>
       </section>
 
       <section class="panel wide" data-panel="corridas">
@@ -177,6 +188,28 @@
           <h2>Motoristas</h2>
           <button data-list="/api/admin/drivers" type="button" class="ghost">Recarregar</button>
         </div>
+        <div class="grid compact">
+          <input id="driverFormId" type="hidden" />
+          <label>Nome<input id="driverName" /></label>
+          <label>E-mail<input id="driverEmail" /></label>
+          <label>Senha<input id="driverPassword" type="password" /></label>
+          <label>CPF<input id="driverCpf" /></label>
+          <label>RG<input id="driverRg" /></label>
+          <label>Nascimento<input id="driverBirthDate" type="date" /></label>
+          <label>Telefone<input id="driverPhone" /></label>
+          <label>Emergencia<input id="driverEmergencyPhone" /></label>
+          <label>Endereco<input id="driverAddress" /></label>
+          <label>Cidade<input id="driverCity" /></label>
+          <label>UF<input id="driverState" maxlength="2" /></label>
+          <label>CEP<input id="driverZipCode" /></label>
+          <label>CNH<input id="driverCnhNumber" /></label>
+          <label>Categoria<input id="driverCnhCategory" /></label>
+          <label>Vencimento CNH<input id="driverCnhExpiration" type="date" /></label>
+          <label>Filial<select id="driverBranch"></select></label>
+          <label>Aprovado<select id="driverApproved"><option value="true">Sim</option><option value="false">Nao</option></select></label>
+          <label>Ativo<select id="driverActive"><option value="true">Sim</option><option value="false">Nao</option></select></label>
+        </div>
+        <button id="saveDriverButton" type="button" class="wide-button">Salvar motorista</button>
         <div class="table-wrap">
           <table>
             <thead>
@@ -185,14 +218,16 @@
                 <th>Telefone</th>
                 <th>CPF</th>
                 <th>CNH</th>
+                <th>Veiculo</th>
+                <th>Placa</th>
+                <th>Filial</th>
                 <th>Status</th>
-                <th>Aprovacao</th>
-                <th>Ativo</th>
+                <th>Online</th>
                 <th>Acoes</th>
               </tr>
             </thead>
             <tbody id="driversTableBody">
-              <tr><td colspan="8">Clique em Recarregar.</td></tr>
+              <tr><td colspan="10">Clique em Recarregar.</td></tr>
             </tbody>
           </table>
         </div>
@@ -203,6 +238,23 @@
           <h2>Passageiros</h2>
           <button data-list="/api/admin/passengers" type="button" class="ghost">Recarregar</button>
         </div>
+        <div class="grid compact">
+          <input id="passengerFormId" type="hidden" />
+          <label>Nome<input id="passengerName" /></label>
+          <label>E-mail<input id="passengerEmail" /></label>
+          <label>Senha<input id="passengerPassword" type="password" /></label>
+          <label>CPF<input id="passengerCpf" /></label>
+          <label>Nascimento<input id="passengerBirthDate" type="date" /></label>
+          <label>Telefone<input id="passengerPhone" /></label>
+          <label>Emergencia<input id="passengerEmergencyPhone" /></label>
+          <label>Endereco<input id="passengerAddress" /></label>
+          <label>Cidade<input id="passengerCity" /></label>
+          <label>UF<input id="passengerState" maxlength="2" /></label>
+          <label>CEP<input id="passengerZipCode" /></label>
+          <label>Filial<select id="passengerBranch"></select></label>
+          <label>Ativo<select id="passengerActive"><option value="true">Sim</option><option value="false">Nao</option></select></label>
+        </div>
+        <button id="savePassengerButton" type="button" class="wide-button">Salvar passageiro</button>
         <div class="table-wrap">
           <table>
             <thead>
@@ -210,9 +262,9 @@
                 <th>Nome</th>
                 <th>Telefone</th>
                 <th>CPF</th>
-                <th>Endereco</th>
                 <th>Cidade/UF</th>
-                <th>Ativo</th>
+                <th>Status</th>
+                <th>Corridas</th>
                 <th>Acoes</th>
               </tr>
             </thead>
@@ -228,16 +280,29 @@
           <h2>Veiculos</h2>
           <button data-list="/api/admin/vehicles" type="button" class="ghost">Recarregar</button>
         </div>
+        <div class="grid compact">
+          <input id="vehicleFormId" type="hidden" />
+          <label>Motorista<select id="vehicleDriver"></select></label>
+          <label>Placa<input id="vehiclePlate" /></label>
+          <label>Marca<input id="vehicleBrand" /></label>
+          <label>Modelo<input id="vehicleModel" /></label>
+          <label>Ano<input id="vehicleYear" /></label>
+          <label>Cor<input id="vehicleColor" /></label>
+          <label>Renavam<input id="vehicleRenavam" /></label>
+          <label>Chassi<input id="vehicleChassis" /></label>
+          <label>Ativo<select id="vehicleActive"><option value="true">Sim</option><option value="false">Nao</option></select></label>
+        </div>
+        <button id="saveVehicleButton" type="button" class="wide-button">Salvar veiculo</button>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Motorista</th>
-                <th>Placa</th>
                 <th>Marca</th>
                 <th>Modelo</th>
-                <th>Ano</th>
                 <th>Cor</th>
+                <th>Placa</th>
+                <th>Ano</th>
                 <th>Ativo</th>
                 <th>Acoes</th>
               </tr>
@@ -252,7 +317,7 @@
       <section class="panel wide" data-panel="admins">
         <div class="panel-title">
           <h2>Admins</h2>
-          <button data-list="/api/admin-users" type="button" class="ghost">Recarregar</button>
+          <button data-list="/api/admin/admins" type="button" class="ghost">Recarregar</button>
         </div>
         <div class="grid compact">
           <input id="adminId" type="hidden" />
@@ -261,8 +326,10 @@
           <label>Senha<input id="adminPassword" type="password" /></label>
           <label>Tipo
             <select id="adminType">
-              <option value="1">AdminPrincipal</option>
+              <option value="1">SuperAdmin</option>
+              <option value="1">AdminGeral</option>
               <option value="2">AdminFilial</option>
+              <option value="2">Operador</option>
             </select>
           </label>
           <label>Filial<select id="adminBranch"></select></label>
@@ -287,7 +354,7 @@
       <section class="panel wide" data-panel="filiais">
         <div class="panel-title">
           <h2>Filiais</h2>
-          <button data-list="/api/branches" type="button" class="ghost">Recarregar</button>
+          <button data-list="/api/admin/branches" type="button" class="ghost">Recarregar</button>
         </div>
         <div class="grid compact">
           <input id="branchId" type="hidden" />
@@ -307,9 +374,9 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Nome</th><th>Cidade/UF</th><th>Endereco</th><th>Telefone</th><th>Status</th><th>Acoes</th></tr>
+              <tr><th>Nome</th><th>Cidade</th><th>UF</th><th>Telefone</th><th>Responsavel</th><th>Status</th><th>Acoes</th></tr>
             </thead>
-            <tbody id="branchesTableBody"><tr><td colspan="6">Clique em Recarregar.</td></tr></tbody>
+            <tbody id="branchesTableBody"><tr><td colspan="7">Clique em Recarregar.</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -317,9 +384,10 @@
       <section class="panel wide" data-panel="tarifas">
         <div class="panel-title">
           <h2>Tarifas/Valores</h2>
-          <button data-list="/api/branch-fares" type="button" class="ghost">Recarregar</button>
+          <button data-list="/api/admin/fares" type="button" class="ghost">Recarregar</button>
         </div>
         <div class="grid compact">
+          <input id="fareId" type="hidden" />
           <label>Filial<select id="fareBranch"></select></label>
           <label>Valor base<input id="fareBase" value="7" /></label>
           <label>Valor minimo<input id="fareMinimum" value="7" /></label>
@@ -331,10 +399,45 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Filial</th><th>Base</th><th>Km</th><th>Minuto</th><th>Minima</th><th>Ativa</th></tr>
+              <tr><th>Filial</th><th>Valor base</th><th>Valor por km</th><th>Valor por minuto</th><th>Valor minimo</th><th>Cancelamento</th><th>Status</th><th>Acoes</th></tr>
             </thead>
-            <tbody id="faresTableBody"><tr><td colspan="6">Clique em Recarregar.</td></tr></tbody>
+            <tbody id="faresTableBody"><tr><td colspan="8">Clique em Recarregar.</td></tr></tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="panel wide" data-panel="config">
+        <div class="panel-title">
+          <h2>Configuracoes</h2>
+          <button id="saveConfigButton" type="button">Salvar configuracoes</button>
+        </div>
+        <div class="settings-tabs" role="tablist" aria-label="Configuracoes">
+          <button class="ghost active" data-config-tab="geral" type="button">Geral</button>
+          <button class="ghost" data-config-tab="empresa" type="button">Empresa</button>
+          <button class="ghost" data-config-tab="aparencia" type="button">Aparencia</button>
+          <button class="ghost" data-config-tab="notificacoes" type="button">Notificacoes</button>
+          <button class="ghost" data-config-tab="integracoes" type="button">Integracoes</button>
+          <button class="ghost" data-config-tab="seguranca" type="button">Seguranca</button>
+          <button class="ghost" data-config-tab="backup" type="button">Backup</button>
+          <button class="ghost" data-config-tab="logs" type="button">Logs</button>
+        </div>
+        <div class="grid compact settings-grid">
+          <label data-config-panel="geral">Nome do painel<input id="configPanelName" value="RidePR Admin" /></label>
+          <label data-config-panel="geral">Atualizacao automatica<select id="configAutoRefresh"><option value="true">Ativa</option><option value="false">Inativa</option></select></label>
+          <label data-config-panel="empresa">Empresa<input id="configCompanyName" value="RidePR" /></label>
+          <label data-config-panel="empresa">Telefone<input id="configCompanyPhone" /></label>
+          <label data-config-panel="aparencia">Tema<select id="configTheme"><option value="light">Claro</option><option value="contrast">Alto contraste</option></select></label>
+          <label data-config-panel="aparencia">Cor principal<input id="configAccent" value="#ffc928" /></label>
+          <label data-config-panel="notificacoes">E-mail operacional<input id="configOpsEmail" /></label>
+          <label data-config-panel="notificacoes">Alertas SignalR<select id="configSignalrAlerts"><option value="true">Ativos</option><option value="false">Inativos</option></select></label>
+          <label data-config-panel="integracoes">Gateway de mapas<input id="configMapsProvider" value="OpenStreetMap" /></label>
+          <label data-config-panel="integracoes">Webhook<input id="configWebhook" /></label>
+          <label data-config-panel="seguranca">Tempo de sessao (min)<input id="configSessionMinutes" value="120" /></label>
+          <label data-config-panel="seguranca">MFA<select id="configMfa"><option value="false">Desativado</option><option value="true">Ativado</option></select></label>
+          <label data-config-panel="backup">Retencao (dias)<input id="configBackupDays" value="30" /></label>
+          <label data-config-panel="backup">Backup automatico<select id="configBackupAuto"><option value="true">Ativo</option><option value="false">Inativo</option></select></label>
+          <label data-config-panel="logs">Nivel de log<select id="configLogLevel"><option>Information</option><option>Warning</option><option>Error</option></select></label>
+          <label data-config-panel="logs">Auditoria<select id="configAudit"><option value="true">Ativa</option><option value="false">Inativa</option></select></label>
         </div>
       </section>
 

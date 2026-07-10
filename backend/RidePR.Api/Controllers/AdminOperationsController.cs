@@ -20,6 +20,52 @@ public class AdminOperationsController : ControllerBase
         _context = context;
     }
 
+    [HttpGet("dashboard")]
+    public async Task<IActionResult> GetDashboard()
+    {
+        var today = DateTime.UtcNow.Date;
+        var tomorrow = today.AddDays(1);
+
+        var trips = await _context.Trips
+            .AsNoTracking()
+            .Where(x =>
+                x.CreatedAt >= today ||
+                x.Status == TripStatus.Requested ||
+                x.Status == TripStatus.Accepted ||
+                x.Status == TripStatus.InProgress)
+            .ToListAsync();
+
+        return Ok(new
+        {
+            GeneratedAt = DateTime.UtcNow,
+            Trips = new
+            {
+                Waiting = trips.Count(x => x.Status == TripStatus.Requested),
+                Active = trips.Count(x => x.Status == TripStatus.Accepted || x.Status == TripStatus.InProgress),
+                FinishedToday = trips.Count(x => x.Status == TripStatus.Finished && x.CreatedAt >= today && x.CreatedAt < tomorrow),
+                RevenueToday = trips
+                    .Where(x => x.CreatedAt >= today && x.CreatedAt < tomorrow && x.Status != TripStatus.Cancelled)
+                    .Sum(x => x.Price)
+            },
+            Drivers = new
+            {
+                Total = await _context.Drivers.CountAsync(),
+                Online = await _context.Drivers.CountAsync(x => x.Status == DriverStatus.Online),
+                PendingApproval = await _context.Drivers.CountAsync(x => x.ApprovalStatus == DriverApprovalStatus.Pending)
+            },
+            Passengers = new
+            {
+                Total = await _context.Passengers.CountAsync(),
+                Active = await _context.Passengers.CountAsync(x => x.Active)
+            },
+            Branches = new
+            {
+                Total = await _context.Branches.CountAsync(),
+                Active = await _context.Branches.CountAsync(x => x.Active)
+            }
+        });
+    }
+
     [HttpGet("trips")]
     public async Task<IActionResult> GetTrips(
         [FromQuery] TripStatus? status,
@@ -181,6 +227,8 @@ public class AdminOperationsController : ControllerBase
             x.User.Email,
             x.Phone,
             x.Cpf,
+            x.BirthDate,
+            x.EmergencyPhone,
             x.City,
             x.State,
             x.Address,
@@ -191,6 +239,84 @@ public class AdminOperationsController : ControllerBase
             StatusLabel = x.Active ? "Aprovado" : "Bloqueado",
             TripsCount = tripCounts.GetValueOrDefault(x.Id)
         }));
+    }
+
+    [HttpPost("passengers")]
+    public async Task<IActionResult> CreatePassenger(AdminPassengerDto dto)
+    {
+        if (await _context.Users.AnyAsync(x => x.Email.ToLower() == dto.Email.Trim().ToLower()))
+            return BadRequest("E-mail ja cadastrado.");
+
+        if (await _context.Passengers.AnyAsync(x => x.Cpf == dto.Cpf.Trim()))
+            return BadRequest("CPF ja cadastrado.");
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Name = dto.Name.Trim(),
+            Email = dto.Email.Trim(),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(string.IsNullOrWhiteSpace(dto.Password) ? "RidePR123!" : dto.Password),
+            Role = UserRole.Passenger,
+            BranchId = dto.BranchId,
+            Active = dto.Active,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var passenger = new Passenger
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            BranchId = dto.BranchId,
+            Cpf = dto.Cpf.Trim(),
+            BirthDate = UtcDate(dto.BirthDate),
+            Phone = dto.Phone.Trim(),
+            EmergencyPhone = dto.EmergencyPhone.Trim(),
+            Address = dto.Address.Trim(),
+            City = dto.City.Trim(),
+            State = dto.State.Trim().ToUpperInvariant(),
+            ZipCode = dto.ZipCode.Trim(),
+            Active = dto.Active,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _context.Users.AddAsync(user);
+        await _context.Passengers.AddAsync(passenger);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { passenger.Id, user.Name, user.Email, passenger.Phone, passenger.Cpf, passenger.Active });
+    }
+
+    [HttpPut("passengers/{id:guid}")]
+    public async Task<IActionResult> UpdatePassenger(Guid id, AdminPassengerDto dto)
+    {
+        var passenger = await _context.Passengers.Include(x => x.User).FirstOrDefaultAsync(x => x.Id == id);
+
+        if (passenger == null)
+            return NotFound("Passageiro nao encontrado.");
+
+        passenger.User.Name = dto.Name.Trim();
+        passenger.User.Email = dto.Email.Trim();
+        passenger.User.BranchId = dto.BranchId;
+        passenger.User.Active = dto.Active;
+        passenger.BranchId = dto.BranchId;
+        passenger.Cpf = dto.Cpf.Trim();
+        passenger.BirthDate = UtcDate(dto.BirthDate);
+        passenger.Phone = dto.Phone.Trim();
+        passenger.EmergencyPhone = dto.EmergencyPhone.Trim();
+        passenger.Address = dto.Address.Trim();
+        passenger.City = dto.City.Trim();
+        passenger.State = dto.State.Trim().ToUpperInvariant();
+        passenger.ZipCode = dto.ZipCode.Trim();
+        passenger.Active = dto.Active;
+        passenger.UpdatedAt = DateTime.UtcNow;
+
+        if (!string.IsNullOrWhiteSpace(dto.Password))
+            passenger.User.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { passenger.Id, passenger.User.Name, passenger.User.Email, passenger.Phone, passenger.Cpf, passenger.Active });
     }
 
     [HttpPost("passengers/{id:guid}/approve")]
@@ -225,10 +351,16 @@ public class AdminOperationsController : ControllerBase
         return Ok(new { Message = "Passageiro bloqueado.", Status = "Bloqueado" });
     }
 
+    [HttpPost("passengers/{id:guid}/disable")]
+    public async Task<IActionResult> DisablePassenger(Guid id)
+    {
+        return await BlockPassenger(id);
+    }
+
     [HttpDelete("passengers/{id:guid}")]
     public async Task<IActionResult> DeletePassenger(Guid id)
     {
-        var passenger = await _context.Passengers.FirstOrDefaultAsync(x => x.Id == id);
+        var passenger = await _context.Passengers.Include(x => x.User).FirstOrDefaultAsync(x => x.Id == id);
 
         if (passenger == null)
             return NotFound("Passageiro nao encontrado.");
@@ -237,6 +369,7 @@ public class AdminOperationsController : ControllerBase
             return Conflict(CannotDeleteWithHistory);
 
         _context.Passengers.Remove(passenger);
+        _context.Users.Remove(passenger.User);
         await _context.SaveChangesAsync();
 
         return Ok("Passageiro excluido com sucesso.");
@@ -280,8 +413,13 @@ public class AdminOperationsController : ControllerBase
                 x.User.Email,
                 x.Phone,
                 x.Cpf,
+                x.Rg,
+                x.BirthDate,
+                x.EmergencyPhone,
+                x.Address,
                 Cnh = x.CnhNumber,
                 x.CnhCategory,
+                x.CnhExpiration,
                 Vehicle = vehicle == null ? "Sem veiculo" : $"{vehicle.Brand} {vehicle.Model} - {vehicle.Plate}",
                 Plate = vehicle?.Plate ?? "",
                 x.City,
@@ -297,6 +435,96 @@ public class AdminOperationsController : ControllerBase
                 TripsCount = tripCounts.GetValueOrDefault(x.Id)
             };
         }));
+    }
+
+    [HttpPost("drivers")]
+    public async Task<IActionResult> CreateDriver(AdminDriverDto dto)
+    {
+        if (await _context.Users.AnyAsync(x => x.Email.ToLower() == dto.Email.Trim().ToLower()))
+            return BadRequest("E-mail ja cadastrado.");
+
+        if (await _context.Drivers.AnyAsync(x => x.Cpf == dto.Cpf.Trim() || x.CnhNumber == dto.CnhNumber.Trim()))
+            return BadRequest("CPF ou CNH ja cadastrado.");
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Name = dto.Name.Trim(),
+            Email = dto.Email.Trim(),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(string.IsNullOrWhiteSpace(dto.Password) ? "RidePR123!" : dto.Password),
+            Role = UserRole.Driver,
+            BranchId = dto.BranchId,
+            Active = dto.Active,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var driver = new Driver
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            BranchId = dto.BranchId,
+            Cpf = dto.Cpf.Trim(),
+            Rg = dto.Rg.Trim(),
+            BirthDate = UtcDate(dto.BirthDate),
+            Phone = dto.Phone.Trim(),
+            EmergencyPhone = dto.EmergencyPhone.Trim(),
+            Address = dto.Address.Trim(),
+            City = dto.City.Trim(),
+            State = dto.State.Trim().ToUpperInvariant(),
+            ZipCode = dto.ZipCode.Trim(),
+            CnhNumber = dto.CnhNumber.Trim(),
+            CnhCategory = dto.CnhCategory.Trim(),
+            CnhExpiration = UtcDate(dto.CnhExpiration),
+            Status = dto.Active ? DriverStatus.Online : DriverStatus.Offline,
+            ApprovalStatus = dto.Approved ? DriverApprovalStatus.Approved : DriverApprovalStatus.Pending,
+            Active = dto.Active,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _context.Users.AddAsync(user);
+        await _context.Drivers.AddAsync(driver);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { driver.Id, user.Name, user.Email, driver.Phone, driver.Cpf, driver.Active });
+    }
+
+    [HttpPut("drivers/{id:guid}")]
+    public async Task<IActionResult> UpdateDriver(Guid id, AdminDriverDto dto)
+    {
+        var driver = await _context.Drivers.Include(x => x.User).FirstOrDefaultAsync(x => x.Id == id);
+
+        if (driver == null)
+            return NotFound("Motorista nao encontrado.");
+
+        driver.User.Name = dto.Name.Trim();
+        driver.User.Email = dto.Email.Trim();
+        driver.User.BranchId = dto.BranchId;
+        driver.User.Active = dto.Active;
+        driver.BranchId = dto.BranchId;
+        driver.Cpf = dto.Cpf.Trim();
+        driver.Rg = dto.Rg.Trim();
+        driver.BirthDate = UtcDate(dto.BirthDate);
+        driver.Phone = dto.Phone.Trim();
+        driver.EmergencyPhone = dto.EmergencyPhone.Trim();
+        driver.Address = dto.Address.Trim();
+        driver.City = dto.City.Trim();
+        driver.State = dto.State.Trim().ToUpperInvariant();
+        driver.ZipCode = dto.ZipCode.Trim();
+        driver.CnhNumber = dto.CnhNumber.Trim();
+        driver.CnhCategory = dto.CnhCategory.Trim();
+        driver.CnhExpiration = UtcDate(dto.CnhExpiration);
+        driver.Active = dto.Active;
+        driver.ApprovalStatus = dto.Approved ? DriverApprovalStatus.Approved : driver.ApprovalStatus;
+        driver.Status = dto.Active ? driver.Status : DriverStatus.Offline;
+        driver.UpdatedAt = DateTime.UtcNow;
+
+        if (!string.IsNullOrWhiteSpace(dto.Password))
+            driver.User.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { driver.Id, driver.User.Name, driver.User.Email, driver.Phone, driver.Cpf, driver.Active });
     }
 
     [HttpPost("drivers/{id:guid}/approve")]
@@ -333,10 +561,16 @@ public class AdminOperationsController : ControllerBase
         return Ok(new { Message = "Motorista bloqueado.", Status = "Bloqueado" });
     }
 
+    [HttpPost("drivers/{id:guid}/disable")]
+    public async Task<IActionResult> DisableDriver(Guid id)
+    {
+        return await BlockDriver(id);
+    }
+
     [HttpDelete("drivers/{id:guid}")]
     public async Task<IActionResult> DeleteDriver(Guid id)
     {
-        var driver = await _context.Drivers.Include(x => x.Vehicles).FirstOrDefaultAsync(x => x.Id == id);
+        var driver = await _context.Drivers.Include(x => x.User).Include(x => x.Vehicles).FirstOrDefaultAsync(x => x.Id == id);
 
         if (driver == null)
             return NotFound("Motorista nao encontrado.");
@@ -346,6 +580,7 @@ public class AdminOperationsController : ControllerBase
 
         _context.Vehicles.RemoveRange(driver.Vehicles);
         _context.Drivers.Remove(driver);
+        _context.Users.Remove(driver.User);
         await _context.SaveChangesAsync();
 
         return Ok("Motorista excluido com sucesso.");
@@ -386,11 +621,67 @@ public class AdminOperationsController : ControllerBase
             x.Plate,
             x.Year,
             BranchId = x.Driver.BranchId,
+            x.Renavam,
+            x.Chassis,
             BranchName = x.Driver.Branch?.Name ?? x.Driver.User.Branch?.Name ?? "Sem filial",
             x.Active,
             StatusLabel = x.Active ? "Ativo" : "Inativo",
             TripsCount = tripCounts.GetValueOrDefault(x.DriverId)
         }));
+    }
+
+    [HttpPost("vehicles")]
+    public async Task<IActionResult> CreateVehicle(AdminVehicleDto dto)
+    {
+        if (await _context.Vehicles.AnyAsync(x => x.Plate.ToLower() == dto.Plate.Trim().ToLower()))
+            return BadRequest("Placa ja cadastrada.");
+
+        if (!await _context.Drivers.AnyAsync(x => x.Id == dto.DriverId))
+            return BadRequest("Motorista nao encontrado.");
+
+        var vehicle = new Vehicle
+        {
+            Id = Guid.NewGuid(),
+            DriverId = dto.DriverId,
+            Plate = dto.Plate.Trim().ToUpperInvariant(),
+            Brand = dto.Brand.Trim(),
+            Model = dto.Model.Trim(),
+            Color = dto.Color.Trim(),
+            Year = dto.Year,
+            Renavam = dto.Renavam.Trim(),
+            Chassis = dto.Chassis.Trim(),
+            Active = dto.Active,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _context.Vehicles.AddAsync(vehicle);
+        await _context.SaveChangesAsync();
+
+        return Ok(vehicle);
+    }
+
+    [HttpPut("vehicles/{id:guid}")]
+    public async Task<IActionResult> UpdateVehicle(Guid id, AdminVehicleDto dto)
+    {
+        var vehicle = await _context.Vehicles.FirstOrDefaultAsync(x => x.Id == id);
+
+        if (vehicle == null)
+            return NotFound("Veiculo nao encontrado.");
+
+        vehicle.DriverId = dto.DriverId;
+        vehicle.Plate = dto.Plate.Trim().ToUpperInvariant();
+        vehicle.Brand = dto.Brand.Trim();
+        vehicle.Model = dto.Model.Trim();
+        vehicle.Color = dto.Color.Trim();
+        vehicle.Year = dto.Year;
+        vehicle.Renavam = dto.Renavam.Trim();
+        vehicle.Chassis = dto.Chassis.Trim();
+        vehicle.Active = dto.Active;
+        vehicle.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(vehicle);
     }
 
     [HttpPost("vehicles/{id:guid}/approve")]
@@ -571,5 +862,51 @@ public class AdminOperationsController : ControllerBase
             DriverApprovalStatus.Rejected => "Recusado",
             _ => "Desconhecido"
         };
+    }
+
+    private static DateTime UtcDate(DateTime value)
+    {
+        return value.Kind == DateTimeKind.Utc
+            ? value
+            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    }
+
+    public class AdminPassengerDto
+    {
+        public string Name { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Password { get; set; } = "";
+        public Guid? BranchId { get; set; }
+        public string Cpf { get; set; } = "";
+        public DateTime BirthDate { get; set; } = DateTime.UtcNow.AddYears(-18);
+        public string Phone { get; set; } = "";
+        public string EmergencyPhone { get; set; } = "";
+        public string Address { get; set; } = "";
+        public string City { get; set; } = "";
+        public string State { get; set; } = "";
+        public string ZipCode { get; set; } = "";
+        public bool Active { get; set; } = true;
+    }
+
+    public class AdminDriverDto : AdminPassengerDto
+    {
+        public string Rg { get; set; } = "";
+        public string CnhNumber { get; set; } = "";
+        public string CnhCategory { get; set; } = "";
+        public DateTime CnhExpiration { get; set; } = DateTime.UtcNow.AddYears(1);
+        public bool Approved { get; set; } = true;
+    }
+
+    public class AdminVehicleDto
+    {
+        public Guid DriverId { get; set; }
+        public string Plate { get; set; } = "";
+        public string Brand { get; set; } = "";
+        public string Model { get; set; } = "";
+        public string Color { get; set; } = "";
+        public int Year { get; set; } = DateTime.UtcNow.Year;
+        public string Renavam { get; set; } = "";
+        public string Chassis { get; set; } = "";
+        public bool Active { get; set; } = true;
     }
 }

@@ -11,6 +11,7 @@ namespace RidePR.Api.Controllers;
 [ApiController]
 [Authorize(Roles = "Administrator")]
 [Route("api/branches")]
+[Route("api/admin/branches")]
 public class BranchesController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -29,7 +30,27 @@ public class BranchesController : ControllerBase
         if (admin?.AdminType == AdminType.AdminFilial && admin.BranchId.HasValue)
             query = query.Where(x => x.Id == admin.BranchId.Value);
 
-        return Ok(await query.OrderBy(x => x.Name).ToListAsync());
+        var branches = await query.OrderBy(x => x.Name).ToListAsync();
+        var branchIds = branches.Select(x => x.Id).ToList();
+        var responsibleByBranch = await _context.Users
+            .Where(x => x.Role == UserRole.Administrator && x.BranchId.HasValue && branchIds.Contains(x.BranchId.Value))
+            .GroupBy(x => x.BranchId!.Value)
+            .Select(x => new { BranchId = x.Key, ResponsibleName = x.OrderBy(u => u.Name).Select(u => u.Name).FirstOrDefault() })
+            .ToDictionaryAsync(x => x.BranchId, x => x.ResponsibleName ?? "");
+
+        return Ok(branches.Select(x => new
+        {
+            x.Id,
+            x.Name,
+            x.City,
+            x.State,
+            x.Address,
+            x.Phone,
+            ResponsibleName = responsibleByBranch.GetValueOrDefault(x.Id, "Sem responsavel"),
+            x.Active,
+            x.CreatedAt,
+            x.UpdatedAt
+        }));
     }
 
     [HttpPost]
@@ -82,6 +103,33 @@ public class BranchesController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(branch);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var admin = await CurrentUserAsync();
+
+        if (admin?.AdminType == AdminType.AdminFilial)
+            return Forbid();
+
+        var branch = await _context.Branches.FindAsync(id);
+
+        if (branch == null)
+            return NotFound("Filial nao encontrada.");
+
+        var inUse = await _context.Users.AnyAsync(x => x.BranchId == id) ||
+                    await _context.Drivers.AnyAsync(x => x.BranchId == id) ||
+                    await _context.Passengers.AnyAsync(x => x.BranchId == id) ||
+                    await _context.Trips.AnyAsync(x => x.BranchId == id);
+
+        if (inUse)
+            return Conflict("Filial possui vinculos. Desative a filial antes de remove-la definitivamente.");
+
+        _context.Branches.Remove(branch);
+        await _context.SaveChangesAsync();
+
+        return Ok("Filial excluida com sucesso.");
     }
 
     private async Task<User?> CurrentUserAsync()

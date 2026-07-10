@@ -65,6 +65,7 @@ public class AdminPanelController : ControllerBase
     /// Retorna motoristas com ultima localizacao conhecida para o mapa operacional.
     /// </summary>
     [HttpGet("live-drivers")]
+    [HttpGet("/api/admin/live-drivers")]
     public async Task<IActionResult> GetLiveDrivers([FromQuery] AdminLiveDriversQueryDto query)
     {
         var result = await _adminPanelService.GetLiveDriversAsync(query);

@@ -11,6 +11,7 @@ namespace RidePR.Api.Controllers;
 [ApiController]
 [Authorize(Roles = "Administrator")]
 [Route("api/branch-fares")]
+[Route("api/admin/fares")]
 public class BranchFaresController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -90,6 +91,62 @@ public class BranchFaresController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(fare);
+    }
+
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, BranchFareDto dto)
+    {
+        dto.Id = id;
+        return await Upsert(dto);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var admin = await CurrentUserAsync();
+        var fare = await _context.FareSettings.FirstOrDefaultAsync(x => x.Id == id);
+
+        if (fare == null)
+            return NotFound("Tarifa nao encontrada.");
+
+        if (admin?.AdminType == AdminType.AdminFilial &&
+            (!admin.BranchId.HasValue || fare.BranchId != admin.BranchId.Value))
+            return Forbid();
+
+        _context.FareSettings.Remove(fare);
+        await _context.SaveChangesAsync();
+
+        return Ok("Tarifa excluida com sucesso.");
+    }
+
+    [HttpPost("{id:guid}/activate")]
+    public async Task<IActionResult> Activate(Guid id)
+    {
+        return await SetActiveAsync(id, true, "Tarifa ativada.");
+    }
+
+    [HttpPost("{id:guid}/disable")]
+    public async Task<IActionResult> Disable(Guid id)
+    {
+        return await SetActiveAsync(id, false, "Tarifa desativada.");
+    }
+
+    private async Task<IActionResult> SetActiveAsync(Guid id, bool active, string message)
+    {
+        var admin = await CurrentUserAsync();
+        var fare = await _context.FareSettings.FirstOrDefaultAsync(x => x.Id == id);
+
+        if (fare == null)
+            return NotFound("Tarifa nao encontrada.");
+
+        if (admin?.AdminType == AdminType.AdminFilial &&
+            (!admin.BranchId.HasValue || fare.BranchId != admin.BranchId.Value))
+            return Forbid();
+
+        fare.Active = active;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { Message = message, fare.Active });
     }
 
     private async Task<User?> CurrentUserAsync()

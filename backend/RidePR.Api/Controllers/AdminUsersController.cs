@@ -12,6 +12,7 @@ namespace RidePR.Api.Controllers;
 [ApiController]
 [Authorize(Roles = "Administrator")]
 [Route("api/admin-users")]
+[Route("api/admin/admins")]
 public class AdminUsersController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -105,6 +106,25 @@ public class AdminUsersController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { user.Id, user.Name, user.Email, AdminType = user.AdminType.ToString(), user.BranchId, user.Active });
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var admin = await CurrentUserAsync();
+
+        if (admin?.AdminType == AdminType.AdminFilial || admin?.Id == id)
+            return Forbid();
+
+        var user = await _context.Users.FirstOrDefaultAsync(x => x.Id == id && x.Role == UserRole.Administrator);
+
+        if (user == null)
+            return NotFound("Admin nao encontrado.");
+
+        _context.Users.Remove(user);
+        await _context.SaveChangesAsync();
+
+        return Ok("Admin excluido com sucesso.");
     }
 
     private async Task<User?> CurrentUserAsync()

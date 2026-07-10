@@ -1,4 +1,5 @@
 const adminTokenKey = 'rideprAdminAccessToken';
+const adminConfigKey = 'rideprAdminLocalConfig';
 
 let accessToken = localStorage.getItem(adminTokenKey) || '';
 let hubConnection = null;
@@ -15,6 +16,8 @@ let vehiclesCache = [];
 let branchesCache = [];
 let adminsCache = [];
 let faresCache = [];
+let liveDriversCache = [];
+let mapOperationalLayer = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -52,6 +55,11 @@ function numberValue(id) {
 
 function boolValue(id) {
   return $(id).value === 'true';
+}
+
+function dateInputValue(source, name) {
+  const value = field(source, name);
+  return value ? String(value).slice(0, 10) : '';
 }
 
 function show(statusCode, body) {
@@ -190,6 +198,7 @@ function initMap() {
     attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 19,
   }).addTo(map);
+  mapOperationalLayer = L.layerGroup().addTo(map);
 }
 
 function markerAt(existingMarker, latitude, longitude, label) {
@@ -231,6 +240,91 @@ function fitMapOnce() {
 
   fitMap();
   map._ridePrFitted = true;
+}
+
+function isActiveTrip(trip) {
+  return ['Aguardando motorista', 'Aceita', 'Em andamento'].includes(statusLabel(field(trip, 'Status')));
+}
+
+function numericField(source, name) {
+  const value = Number(field(source, name));
+  return Number.isFinite(value) ? value : null;
+}
+
+function renderMapOverview() {
+  initMap();
+
+  if (!mapOperationalLayer) {
+    return;
+  }
+
+  mapOperationalLayer.clearLayers();
+
+  const bounds = [];
+  const activeTrips = tripsCache.filter(isActiveTrip);
+  const onlineDrivers = liveDriversCache.filter((driver) => field(driver, 'Online') !== false);
+
+  activeTrips.forEach((trip) => {
+    const originLatitude = numericField(trip, 'OriginLatitude');
+    const originLongitude = numericField(trip, 'OriginLongitude');
+    const destinationLatitude = numericField(trip, 'DestinationLatitude');
+    const destinationLongitude = numericField(trip, 'DestinationLongitude');
+    const code = field(trip, 'ShortCode') || 'Corrida';
+    const passenger = field(trip, 'PassengerName') || 'Passageiro';
+    const driver = field(trip, 'DriverName') || 'Aguardando motorista';
+
+    if (originLatitude !== null && originLongitude !== null) {
+      const marker = L.marker([originLatitude, originLongitude])
+        .bindPopup(`${escapeHtml(code)} - origem<br>${escapeHtml(passenger)}`);
+      marker.addTo(mapOperationalLayer);
+      bounds.push([originLatitude, originLongitude]);
+    }
+
+    if (destinationLatitude !== null && destinationLongitude !== null) {
+      const marker = L.marker([destinationLatitude, destinationLongitude])
+        .bindPopup(`${escapeHtml(code)} - destino<br>${escapeHtml(driver)}`);
+      marker.addTo(mapOperationalLayer);
+      bounds.push([destinationLatitude, destinationLongitude]);
+    }
+
+    if (originLatitude !== null && originLongitude !== null && destinationLatitude !== null && destinationLongitude !== null) {
+      L.polyline([[originLatitude, originLongitude], [destinationLatitude, destinationLongitude]], {
+        color: '#d99f00',
+        weight: 3,
+      }).addTo(mapOperationalLayer);
+    }
+  });
+
+  onlineDrivers.forEach((driver) => {
+    const latitude = numericField(driver, 'Latitude');
+    const longitude = numericField(driver, 'Longitude');
+
+    if (latitude === null || longitude === null) {
+      return;
+    }
+
+    L.circleMarker([latitude, longitude], {
+      color: '#166534',
+      fillColor: '#16a34a',
+      fillOpacity: 0.85,
+      radius: 8,
+    })
+      .bindPopup(`${escapeHtml(field(driver, 'Name'))}<br>${escapeHtml(field(driver, 'Status'))}`)
+      .addTo(mapOperationalLayer);
+    bounds.push([latitude, longitude]);
+  });
+
+  $('mapDriversSummary').textContent = `${onlineDrivers.length} motoristas online`;
+  $('mapTripsSummary').textContent = activeTrips.length
+    ? `${activeTrips.length} corridas ativas`
+    : 'Nenhuma corrida ativa no momento.';
+  $('mapLiveStatus').textContent = activeTrips.length
+    ? `${activeTrips.length} corridas ativas no mapa`
+    : 'Nenhuma corrida ativa no momento.';
+
+  if (bounds.length) {
+    map.fitBounds(L.latLngBounds(bounds), { padding: [36, 36] });
+  }
 }
 
 function updateTripMap(trip, eventName = 'Corrida atualizada') {
@@ -447,6 +541,84 @@ function showEntityDetails(kind, id) {
   ]);
 }
 
+function editPassenger(id) {
+  const passenger = passengersCache.find((item) => String(field(item, 'Id')) === String(id));
+  if (!passenger) return;
+
+  $('passengerFormId').value = field(passenger, 'Id') ?? '';
+  $('passengerName').value = field(passenger, 'Name') ?? '';
+  $('passengerEmail').value = field(passenger, 'Email') ?? '';
+  $('passengerPassword').value = '';
+  $('passengerCpf').value = field(passenger, 'Cpf') ?? '';
+  $('passengerBirthDate').value = dateInputValue(passenger, 'BirthDate');
+  $('passengerPhone').value = field(passenger, 'Phone') ?? '';
+  $('passengerEmergencyPhone').value = field(passenger, 'EmergencyPhone') ?? '';
+  $('passengerAddress').value = field(passenger, 'Address') ?? '';
+  $('passengerCity').value = field(passenger, 'City') ?? '';
+  $('passengerState').value = field(passenger, 'State') ?? '';
+  $('passengerZipCode').value = field(passenger, 'ZipCode') ?? '';
+  $('passengerBranch').value = field(passenger, 'BranchId') ?? '';
+  $('passengerActive').value = field(passenger, 'Active') ? 'true' : 'false';
+  $('passengerName').focus();
+}
+
+function editDriver(id) {
+  const driver = driversCache.find((item) => String(field(item, 'Id')) === String(id));
+  if (!driver) return;
+
+  $('driverFormId').value = field(driver, 'Id') ?? '';
+  $('driverName').value = field(driver, 'Name') ?? '';
+  $('driverEmail').value = field(driver, 'Email') ?? '';
+  $('driverPassword').value = '';
+  $('driverCpf').value = field(driver, 'Cpf') ?? '';
+  $('driverRg').value = field(driver, 'Rg') ?? '';
+  $('driverBirthDate').value = dateInputValue(driver, 'BirthDate');
+  $('driverPhone').value = field(driver, 'Phone') ?? '';
+  $('driverEmergencyPhone').value = field(driver, 'EmergencyPhone') ?? '';
+  $('driverAddress').value = field(driver, 'Address') ?? '';
+  $('driverCity').value = field(driver, 'City') ?? '';
+  $('driverState').value = field(driver, 'State') ?? '';
+  $('driverZipCode').value = field(driver, 'ZipCode') ?? '';
+  $('driverCnhNumber').value = field(driver, 'Cnh') ?? '';
+  $('driverCnhCategory').value = field(driver, 'CnhCategory') ?? '';
+  $('driverCnhExpiration').value = dateInputValue(driver, 'CnhExpiration');
+  $('driverBranch').value = field(driver, 'BranchId') ?? '';
+  $('driverApproved').value = String(field(driver, 'ApprovalStatus')).includes('Approved') || field(driver, 'ApprovalStatus') === 2 ? 'true' : 'false';
+  $('driverActive').value = field(driver, 'Active') ? 'true' : 'false';
+  $('driverName').focus();
+}
+
+function editVehicle(id) {
+  const vehicle = vehiclesCache.find((item) => String(field(item, 'Id')) === String(id));
+  if (!vehicle) return;
+
+  $('vehicleFormId').value = field(vehicle, 'Id') ?? '';
+  $('vehicleDriver').value = field(vehicle, 'DriverId') ?? '';
+  $('vehiclePlate').value = field(vehicle, 'Plate') ?? '';
+  $('vehicleBrand').value = field(vehicle, 'Brand') ?? '';
+  $('vehicleModel').value = field(vehicle, 'Model') ?? '';
+  $('vehicleYear').value = field(vehicle, 'Year') ?? '';
+  $('vehicleColor').value = field(vehicle, 'Color') ?? '';
+  $('vehicleRenavam').value = field(vehicle, 'Renavam') ?? '';
+  $('vehicleChassis').value = field(vehicle, 'Chassis') ?? '';
+  $('vehicleActive').value = field(vehicle, 'Active') ? 'true' : 'false';
+  $('vehiclePlate').focus();
+}
+
+function editFare(id) {
+  const fare = faresCache.find((item) => String(field(item, 'Id')) === String(id));
+  if (!fare) return;
+
+  $('fareId').value = field(fare, 'Id') ?? '';
+  $('fareBranch').value = field(fare, 'BranchId') ?? '';
+  $('fareBase').value = field(fare, 'BaseFare') ?? '';
+  $('fareMinimum').value = field(fare, 'MinimumFare') ?? '';
+  $('fareKm').value = field(fare, 'PricePerKm') ?? '';
+  $('fareMinute').value = field(fare, 'PricePerMinute') ?? '';
+  $('fareCancellation').value = field(fare, 'CancellationFee') ?? '';
+  $('fareBase').focus();
+}
+
 function editBranch(id) {
   const branch = branchesCache.find((item) => String(field(item, 'Id')) === String(id));
 
@@ -473,7 +645,7 @@ async function toggleBranch(id) {
     return;
   }
 
-  await put(`/api/branches/${id}`, {
+  await put(`/api/admin/branches/${id}`, {
     name: field(branch, 'Name'),
     city: field(branch, 'City'),
     state: field(branch, 'State'),
@@ -481,7 +653,7 @@ async function toggleBranch(id) {
     phone: field(branch, 'Phone'),
     active: nextActive,
   });
-  await list('/api/branches');
+  await list('/api/admin/branches');
 }
 
 function editAdmin(id) {
@@ -510,7 +682,7 @@ async function toggleAdmin(id) {
     return;
   }
 
-  await put(`/api/admin-users/${id}`, {
+  await put(`/api/admin/admins/${id}`, {
     name: field(admin, 'Name'),
     email: field(admin, 'Email'),
     password: '',
@@ -518,7 +690,7 @@ async function toggleAdmin(id) {
     branchId: field(admin, 'BranchId') || null,
     active: nextActive,
   });
-  await list('/api/admin-users');
+  await list('/api/admin/admins');
 }
 
 async function runAdminAction(action, id) {
@@ -527,6 +699,9 @@ async function runAdminAction(action, id) {
     'toggle-driver-details': () => showEntityDetails('driver', id),
     'toggle-passenger-details': () => showEntityDetails('passenger', id),
     'toggle-vehicle-details': () => showEntityDetails('vehicle', id),
+    'edit-driver': () => editDriver(id),
+    'edit-passenger': () => editPassenger(id),
+    'edit-vehicle': () => editVehicle(id),
     'cancel-trip': async () => {
       if (!confirm('Tem certeza que deseja cancelar esta corrida?')) return;
       await post(`/api/trips/${id}/cancel`, {});
@@ -551,6 +726,11 @@ async function runAdminAction(action, id) {
       await post(`/api/admin/passengers/${id}/block`, {});
       await list('/api/admin/passengers');
     },
+    'disable-passenger': async () => {
+      if (!confirm('Tem certeza que deseja desativar este passageiro?')) return;
+      await post(`/api/admin/passengers/${id}/disable`, {});
+      await list('/api/admin/passengers');
+    },
     'delete-passenger': async () => {
       if (!confirm('Tem certeza que deseja excluir este passageiro?')) return;
       await remove(`/api/admin/passengers/${id}`);
@@ -563,6 +743,11 @@ async function runAdminAction(action, id) {
     'block-driver': async () => {
       if (!confirm('Tem certeza que deseja bloquear este motorista?')) return;
       await post(`/api/admin/drivers/${id}/block`, {});
+      await list('/api/admin/drivers');
+    },
+    'disable-driver': async () => {
+      if (!confirm('Tem certeza que deseja desativar este motorista?')) return;
+      await post(`/api/admin/drivers/${id}/disable`, {});
       await list('/api/admin/drivers');
     },
     'delete-driver': async () => {
@@ -586,8 +771,30 @@ async function runAdminAction(action, id) {
     },
     'edit-branch': () => editBranch(id),
     'toggle-branch': () => toggleBranch(id),
+    'delete-branch': async () => {
+      if (!confirm('Tem certeza que deseja excluir esta filial?')) return;
+      await remove(`/api/admin/branches/${id}`);
+      await list('/api/admin/branches');
+    },
     'edit-admin': () => editAdmin(id),
     'toggle-admin': () => toggleAdmin(id),
+    'delete-admin': async () => {
+      if (!confirm('Tem certeza que deseja excluir este admin?')) return;
+      await remove(`/api/admin/admins/${id}`);
+      await list('/api/admin/admins');
+    },
+    'edit-fare': () => editFare(id),
+    'delete-fare': async () => {
+      if (!confirm('Tem certeza que deseja excluir esta tarifa?')) return;
+      await remove(`/api/admin/fares/${id}`);
+      await list('/api/admin/fares');
+    },
+    'toggle-fare': async () => {
+      const fare = faresCache.find((item) => String(field(item, 'Id')) === String(id));
+      const nextAction = field(fare, 'Active') ? 'disable' : 'activate';
+      await post(`/api/admin/fares/${id}/${nextAction}`, {});
+      await list('/api/admin/fares');
+    },
   };
 
   await actions[action]?.();
@@ -628,16 +835,21 @@ async function list(path) {
     renderTrips(body);
   }
 
-  if (path.startsWith('/api/branches')) {
+  if (path.startsWith('/api/branches') || path.startsWith('/api/admin/branches')) {
     renderBranches(body);
   }
 
-  if (path.startsWith('/api/admin-users')) {
+  if (path.startsWith('/api/admin-users') || path.startsWith('/api/admin/admins')) {
     renderAdmins(body);
   }
 
-  if (path.startsWith('/api/branch-fares')) {
+  if (path.startsWith('/api/branch-fares') || path.startsWith('/api/admin/fares')) {
     renderFares(body);
+  }
+
+  if (path.startsWith('/api/admin-panel/live-drivers') || path.startsWith('/api/admin/live-drivers')) {
+    liveDriversCache = pageItems(body);
+    renderMapOverview();
   }
 }
 
@@ -714,7 +926,7 @@ function renderDrivers(body) {
   const table = $('driversTableBody');
 
   if (!rows.length) {
-    table.innerHTML = '<tr><td colspan="8">Nenhum motorista encontrado.</td></tr>';
+    table.innerHTML = '<tr><td colspan="10">Nenhum motorista cadastrado.</td></tr>';
     updateDashboard();
     return;
   }
@@ -724,18 +936,24 @@ function renderDrivers(body) {
       <td>${fieldCell(driver, 'Name')}<br><span class="muted">${fieldCell(driver, 'Email')}</span></td>
       <td>${fieldCell(driver, 'Phone')}</td>
       <td>${fieldCell(driver, 'Cpf')}</td>
-      <td>${fieldCell(driver, 'Cnh')} / ${fieldCell(driver, 'CnhCategory')}<br><span class="muted">${fieldCell(driver, 'Vehicle')}</span></td>
+      <td>${fieldCell(driver, 'Cnh')} / ${fieldCell(driver, 'CnhCategory')}</td>
+      <td>${fieldCell(driver, 'Vehicle')}</td>
+      <td>${fieldCell(driver, 'Plate')}</td>
+      <td>${fieldCell(driver, 'BranchName')}</td>
       <td>${escapeHtml(field(driver, 'StatusLabel') ?? driverStatusLabel(field(driver, 'Status')))}</td>
-      <td>${escapeHtml(field(driver, 'ApprovalStatusLabel') ?? approvalStatusLabel(field(driver, 'ApprovalStatus')))}</td>
-      <td>${escapeHtml(field(driver, 'ActiveLabel') ?? (field(driver, 'Active') ? 'Ativo' : 'Bloqueado'))}</td>
+      <td>${statusLabel(field(driver, 'Status')) === 'Online' || field(driver, 'Status') === 'Online' ? 'Sim' : 'Nao'}</td>
       <td>${rowActions([
         actionButton('Ver detalhes', 'toggle-driver-details', field(driver, 'Id')),
+        actionButton('Editar', 'edit-driver', field(driver, 'Id')),
         actionButton('Aprovar', 'approve-driver', field(driver, 'Id')),
         actionButton('Bloquear', 'block-driver', field(driver, 'Id'), 'danger'),
+        actionButton('Desativar', 'disable-driver', field(driver, 'Id'), 'danger'),
         actionButton('Excluir', 'delete-driver', field(driver, 'Id'), 'danger'),
       ])}</td>
     </tr>
   `).join('');
+  renderDriverOptions();
+  renderMapOverview();
   updateDashboard();
 }
 
@@ -753,20 +971,22 @@ function renderVehicles(body) {
   table.innerHTML = rows.map((vehicle) => `
     <tr>
       <td>${fieldCell(vehicle, 'DriverName')}<br><span class="muted">${fieldCell(vehicle, 'BranchName')}</span></td>
-      <td>${fieldCell(vehicle, 'Plate')}</td>
       <td>${fieldCell(vehicle, 'Brand')}</td>
       <td>${fieldCell(vehicle, 'Model')}</td>
-      <td>${fieldCell(vehicle, 'Year')}</td>
       <td>${fieldCell(vehicle, 'Color')}</td>
+      <td>${fieldCell(vehicle, 'Plate')}</td>
+      <td>${fieldCell(vehicle, 'Year')}</td>
       <td>${escapeHtml(field(vehicle, 'StatusLabel') ?? (field(vehicle, 'Active') ? 'Ativo' : 'Inativo'))}</td>
       <td>${rowActions([
         actionButton('Ver detalhes', 'toggle-vehicle-details', field(vehicle, 'Id')),
+        actionButton('Editar', 'edit-vehicle', field(vehicle, 'Id')),
         actionButton('Aprovar', 'approve-vehicle', field(vehicle, 'Id')),
         actionButton('Desativar', 'disable-vehicle', field(vehicle, 'Id'), 'danger'),
         actionButton('Excluir', 'delete-vehicle', field(vehicle, 'Id'), 'danger'),
       ])}</td>
     </tr>
   `).join('');
+  renderMapOverview();
   updateDashboard();
 }
 
@@ -776,7 +996,7 @@ function renderPassengers(body) {
   const table = $('passengersTableBody');
 
   if (!rows.length) {
-    table.innerHTML = '<tr><td colspan="7">Nenhum passageiro encontrado.</td></tr>';
+    table.innerHTML = '<tr><td colspan="7">Nenhum passageiro cadastrado.</td></tr>';
     updateDashboard();
     return;
   }
@@ -786,17 +1006,20 @@ function renderPassengers(body) {
       <td>${fieldCell(passenger, 'Name')}<br><span class="muted">${fieldCell(passenger, 'Email')}</span></td>
       <td>${fieldCell(passenger, 'Phone')}</td>
       <td>${fieldCell(passenger, 'Cpf')}</td>
-      <td>${fieldCell(passenger, 'Address')}<br><span class="muted">CEP ${fieldCell(passenger, 'ZipCode')}</span></td>
       <td>${fieldCell(passenger, 'City')}/${fieldCell(passenger, 'State')}</td>
       <td>${escapeHtml(field(passenger, 'StatusLabel') ?? (field(passenger, 'Active') ? 'Aprovado' : 'Bloqueado'))}</td>
+      <td>${fieldCell(passenger, 'TripsCount')}</td>
       <td>${rowActions([
         actionButton('Ver detalhes', 'toggle-passenger-details', field(passenger, 'Id')),
+        actionButton('Editar', 'edit-passenger', field(passenger, 'Id')),
         actionButton('Aprovar', 'approve-passenger', field(passenger, 'Id')),
         actionButton('Bloquear', 'block-passenger', field(passenger, 'Id'), 'danger'),
+        actionButton('Desativar', 'disable-passenger', field(passenger, 'Id'), 'danger'),
         actionButton('Excluir', 'delete-passenger', field(passenger, 'Id'), 'danger'),
       ])}</td>
     </tr>
   `).join('');
+  renderMapOverview();
   updateDashboard();
 }
 
@@ -807,6 +1030,7 @@ function renderTrips(body) {
 
   if (!rows.length) {
     table.innerHTML = '<tr><td colspan="9">Nenhuma corrida encontrada.</td></tr>';
+    renderMapOverview();
     updateDashboard();
     return;
   }
@@ -829,6 +1053,7 @@ function renderTrips(body) {
       ])}</td>
     </tr>
   `).join('');
+  renderMapOverview();
   updateDashboard();
 }
 
@@ -840,20 +1065,22 @@ function renderBranches(body) {
   renderBranchOptions();
 
   if (!rows.length) {
-    table.innerHTML = '<tr><td colspan="6">Nenhuma filial encontrada.</td></tr>';
+    table.innerHTML = '<tr><td colspan="7">Nenhuma filial encontrada.</td></tr>';
     return;
   }
 
   table.innerHTML = rows.map((branch) => `
     <tr>
       <td>${fieldCell(branch, 'Name')}</td>
-      <td>${fieldCell(branch, 'City')}/${fieldCell(branch, 'State')}</td>
-      <td>${fieldCell(branch, 'Address')}</td>
+      <td>${fieldCell(branch, 'City')}</td>
+      <td>${fieldCell(branch, 'State')}</td>
       <td>${fieldCell(branch, 'Phone')}</td>
+      <td>${fieldCell(branch, 'ResponsibleName')}</td>
       <td>${field(branch, 'Active') ? 'Ativa' : 'Inativa'}</td>
       <td>${rowActions([
         actionButton('Editar', 'edit-branch', field(branch, 'Id')),
         actionButton(field(branch, 'Active') ? 'Desativar' : 'Ativar', 'toggle-branch', field(branch, 'Id'), field(branch, 'Active') ? 'danger' : 'ghost'),
+        actionButton('Excluir', 'delete-branch', field(branch, 'Id'), 'danger'),
       ])}</td>
     </tr>
   `).join('');
@@ -868,10 +1095,17 @@ function renderBranchOptions() {
     .concat(branchesCache.map((branch) => `<option value="${field(branch, 'Id')}">${cell(field(branch, 'Name'))}</option>`))
     .join('');
 
-  ['adminBranch', 'fareBranch'].forEach((id) => {
+  ['adminBranch', 'fareBranch', 'driverBranch', 'passengerBranch'].forEach((id) => {
     const select = $(id);
     if (select) select.innerHTML = options;
   });
+
+  const fareBranch = $('fareBranch');
+  if (fareBranch) {
+    fareBranch.innerHTML = branchesCache
+      .map((branch) => `<option value="${field(branch, 'Id')}">${cell(field(branch, 'Name'))}</option>`)
+      .join('');
+  }
 
   const tripBranchFilter = $('tripBranchFilter');
   if (tripBranchFilter) {
@@ -879,6 +1113,14 @@ function renderBranchOptions() {
     tripBranchFilter.innerHTML = filterOptions;
     tripBranchFilter.value = selected;
   }
+}
+
+function renderDriverOptions() {
+  const options = ['<option value="">Selecione um motorista</option>']
+    .concat(driversCache.map((driver) => `<option value="${field(driver, 'Id')}">${cell(field(driver, 'Name'))} - ${cell(field(driver, 'Phone'))}</option>`))
+    .join('');
+  const select = $('vehicleDriver');
+  if (select) select.innerHTML = options;
 }
 
 function renderAdmins(body) {
@@ -895,12 +1137,13 @@ function renderAdmins(body) {
     <tr>
       <td>${fieldCell(admin, 'Name')}</td>
       <td>${fieldCell(admin, 'Email')}</td>
-      <td>${fieldCell(admin, 'AdminType')}</td>
+      <td>${escapeHtml(adminTypeLabel(field(admin, 'AdminType')))}</td>
       <td>${fieldCell(admin, 'BranchName')}</td>
       <td>${field(admin, 'Active') ? 'Ativo' : 'Inativo'}</td>
       <td>${rowActions([
         actionButton('Editar', 'edit-admin', field(admin, 'Id')),
         actionButton(field(admin, 'Active') ? 'Desativar' : 'Ativar', 'toggle-admin', field(admin, 'Id'), field(admin, 'Active') ? 'danger' : 'ghost'),
+        actionButton('Excluir', 'delete-admin', field(admin, 'Id'), 'danger'),
       ])}</td>
     </tr>
   `).join('');
@@ -912,7 +1155,7 @@ function renderFares(body) {
   const table = $('faresTableBody');
 
   if (!rows.length) {
-    table.innerHTML = '<tr><td colspan="6">Nenhuma tarifa encontrada.</td></tr>';
+    table.innerHTML = '<tr><td colspan="8">Nenhuma tarifa encontrada.</td></tr>';
     return;
   }
 
@@ -923,7 +1166,13 @@ function renderFares(body) {
       <td>R$ ${cell(field(fare, 'PricePerKm'))}</td>
       <td>R$ ${cell(field(fare, 'PricePerMinute'))}</td>
       <td>R$ ${cell(field(fare, 'MinimumFare'))}</td>
+      <td>R$ ${cell(field(fare, 'CancellationFee'))}</td>
       <td>${field(fare, 'Active') ? 'Ativa' : 'Inativa'}</td>
+      <td>${rowActions([
+        actionButton('Editar', 'edit-fare', field(fare, 'Id')),
+        actionButton(field(fare, 'Active') ? 'Desativar' : 'Ativar', 'toggle-fare', field(fare, 'Id'), field(fare, 'Active') ? 'danger' : 'ghost'),
+        actionButton('Excluir', 'delete-fare', field(fare, 'Id'), 'danger'),
+      ])}</td>
     </tr>
   `).join('');
 }
@@ -970,46 +1219,53 @@ async function refreshActivePanel() {
       list('/api/admin/trips'),
       list('/api/admin/drivers'),
       list('/api/admin/passengers'),
-      list('/api/branches'),
+      list('/api/admin/branches'),
     ]);
     return;
   }
 
   if (activePanel === 'motoristas') {
+    await list('/api/admin/branches');
     await list('/api/admin/drivers');
     return;
   }
 
   if (activePanel === 'passageiros') {
+    await list('/api/admin/branches');
     await list('/api/admin/passengers');
     return;
   }
 
   if (activePanel === 'veiculos') {
+    await list('/api/admin/branches');
+    await list('/api/admin/drivers');
     await list('/api/admin/vehicles');
     return;
   }
 
   if (activePanel === 'admins') {
-    await list('/api/admin-users');
-    await list('/api/branches');
+    await list('/api/admin/admins');
+    await list('/api/admin/branches');
     return;
   }
 
   if (activePanel === 'filiais') {
-    await list('/api/branches');
+    await list('/api/admin/branches');
     return;
   }
 
   if (activePanel === 'tarifas') {
-    await list('/api/branches');
-    await list('/api/branch-fares');
+    await list('/api/admin/branches');
+    await list('/api/admin/fares');
     return;
   }
 
   if (activePanel === 'corridas' || activePanel === 'mapa') {
-    await list('/api/branches');
+    await list('/api/admin/branches');
     await list('/api/admin/trips');
+    if (activePanel === 'mapa') {
+      await list('/api/admin/live-drivers?onlineOnly=false&limit=500');
+    }
     return;
   }
 
@@ -1039,6 +1295,18 @@ function approvalStatusLabel(status) {
     Approved: 'Aprovado',
     Rejected: 'Recusado',
   }[String(status)] ?? cell(status);
+}
+
+function adminTypeLabel(type) {
+  return {
+    1: 'SuperAdmin',
+    2: 'AdminFilial',
+    AdminPrincipal: 'SuperAdmin',
+    AdminFilial: 'AdminFilial',
+    SuperAdmin: 'SuperAdmin',
+    AdminGeral: 'AdminGeral',
+    Operador: 'Operador',
+  }[String(type)] ?? cell(type);
 }
 
 async function createTrip() {
@@ -1142,12 +1410,12 @@ async function saveBranch() {
     active: boolValue('branchActive'),
   };
   const { response } = branchId
-    ? await put(`/api/branches/${branchId}`, payload)
-    : await post('/api/branches', payload);
+    ? await put(`/api/admin/branches/${branchId}`, payload)
+    : await post('/api/admin/branches', payload);
 
   if (response?.ok) {
     $('branchId').value = '';
-    await list('/api/branches');
+    await list('/api/admin/branches');
   }
 }
 
@@ -1163,19 +1431,119 @@ async function saveAdmin() {
     active: boolValue('adminActive'),
   };
   const { response } = adminId
-    ? await put(`/api/admin-users/${adminId}`, payload)
-    : await post('/api/admin-users', payload);
+    ? await put(`/api/admin/admins/${adminId}`, payload)
+    : await post('/api/admin/admins', payload);
 
   if (response?.ok) {
     $('adminId').value = '';
     $('adminPassword').value = '';
-    await list('/api/admin-users');
+    await list('/api/admin/admins');
+  }
+}
+
+function requiredText(id, label) {
+  const value = $(id).value.trim();
+  if (!value) {
+    show('LOCAL', `${label} obrigatorio.`);
+    $(id).focus();
+    throw new Error(`${label} obrigatorio.`);
+  }
+  return value;
+}
+
+function dateOrDefault(id, fallback = '1990-01-01') {
+  return $(id).value || fallback;
+}
+
+async function savePassengerAdmin() {
+  const passengerId = $('passengerFormId').value.trim();
+  const payload = {
+    name: requiredText('passengerName', 'Nome'),
+    email: requiredText('passengerEmail', 'E-mail'),
+    password: $('passengerPassword').value,
+    cpf: requiredText('passengerCpf', 'CPF'),
+    birthDate: dateOrDefault('passengerBirthDate'),
+    phone: $('passengerPhone').value.trim(),
+    emergencyPhone: $('passengerEmergencyPhone').value.trim(),
+    address: $('passengerAddress').value.trim(),
+    city: $('passengerCity').value.trim(),
+    state: $('passengerState').value.trim(),
+    zipCode: $('passengerZipCode').value.trim(),
+    branchId: $('passengerBranch').value || null,
+    active: boolValue('passengerActive'),
+  };
+  const { response } = passengerId
+    ? await put(`/api/admin/passengers/${passengerId}`, payload)
+    : await post('/api/admin/passengers', payload);
+
+  if (response?.ok) {
+    $('passengerFormId').value = '';
+    $('passengerPassword').value = '';
+    await list('/api/admin/passengers');
+  }
+}
+
+async function saveDriverAdmin() {
+  const driverId = $('driverFormId').value.trim();
+  const payload = {
+    name: requiredText('driverName', 'Nome'),
+    email: requiredText('driverEmail', 'E-mail'),
+    password: $('driverPassword').value,
+    cpf: requiredText('driverCpf', 'CPF'),
+    rg: $('driverRg').value.trim(),
+    birthDate: dateOrDefault('driverBirthDate'),
+    phone: $('driverPhone').value.trim(),
+    emergencyPhone: $('driverEmergencyPhone').value.trim(),
+    address: $('driverAddress').value.trim(),
+    city: $('driverCity').value.trim(),
+    state: $('driverState').value.trim(),
+    zipCode: $('driverZipCode').value.trim(),
+    cnhNumber: requiredText('driverCnhNumber', 'CNH'),
+    cnhCategory: $('driverCnhCategory').value.trim(),
+    cnhExpiration: dateOrDefault('driverCnhExpiration', '2030-01-01'),
+    branchId: $('driverBranch').value || null,
+    approved: boolValue('driverApproved'),
+    active: boolValue('driverActive'),
+  };
+  const { response } = driverId
+    ? await put(`/api/admin/drivers/${driverId}`, payload)
+    : await post('/api/admin/drivers', payload);
+
+  if (response?.ok) {
+    $('driverFormId').value = '';
+    $('driverPassword').value = '';
+    await list('/api/admin/drivers');
+  }
+}
+
+async function saveVehicleAdmin() {
+  const vehicleId = $('vehicleFormId').value.trim();
+  const payload = {
+    driverId: requiredText('vehicleDriver', 'Motorista'),
+    plate: requiredText('vehiclePlate', 'Placa'),
+    brand: requiredText('vehicleBrand', 'Marca'),
+    model: requiredText('vehicleModel', 'Modelo'),
+    year: Number.parseInt($('vehicleYear').value.trim(), 10) || new Date().getFullYear(),
+    color: $('vehicleColor').value.trim(),
+    renavam: $('vehicleRenavam').value.trim(),
+    chassis: $('vehicleChassis').value.trim(),
+    active: boolValue('vehicleActive'),
+  };
+  const { response } = vehicleId
+    ? await put(`/api/admin/vehicles/${vehicleId}`, payload)
+    : await post('/api/admin/vehicles', payload);
+
+  if (response?.ok) {
+    $('vehicleFormId').value = '';
+    await list('/api/admin/vehicles');
   }
 }
 
 async function saveFare() {
-  const branchId = $('fareBranch').value || null;
-  const { response } = await post('/api/branch-fares', {
+  const fareId = $('fareId').value.trim();
+  const branchId = requiredText('fareBranch', 'Filial');
+  const payload = {
+    id: fareId || null,
     branchId,
     name: 'Padrao',
     baseFare: numberValue('fareBase'),
@@ -1184,11 +1552,68 @@ async function saveFare() {
     pricePerMinute: numberValue('fareMinute'),
     cancellationFee: numberValue('fareCancellation'),
     active: true,
-  });
+  };
+  const { response } = fareId
+    ? await put(`/api/admin/fares/${fareId}`, payload)
+    : await post('/api/admin/fares', payload);
 
   if (response?.ok) {
-    await list('/api/branch-fares');
+    $('fareId').value = '';
+    await list('/api/admin/fares');
   }
+}
+
+function configInputIds() {
+  return [
+    'configPanelName',
+    'configAutoRefresh',
+    'configCompanyName',
+    'configCompanyPhone',
+    'configTheme',
+    'configAccent',
+    'configOpsEmail',
+    'configSignalrAlerts',
+    'configMapsProvider',
+    'configWebhook',
+    'configSessionMinutes',
+    'configMfa',
+    'configBackupDays',
+    'configBackupAuto',
+    'configLogLevel',
+    'configAudit',
+  ];
+}
+
+function showConfigTab(tabName) {
+  document.querySelectorAll('[data-config-tab]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.configTab === tabName);
+  });
+  document.querySelectorAll('[data-config-panel]').forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.configPanel !== tabName);
+  });
+}
+
+function loadLocalConfig() {
+  const saved = JSON.parse(localStorage.getItem(adminConfigKey) || '{}');
+  configInputIds().forEach((id) => {
+    const input = $(id);
+    if (input && saved[id] !== undefined) {
+      input.value = saved[id];
+    }
+  });
+  showConfigTab('geral');
+}
+
+function saveLocalConfig() {
+  const payload = {};
+  configInputIds().forEach((id) => {
+    const input = $(id);
+    if (input) {
+      payload[id] = input.value;
+    }
+  });
+  localStorage.setItem(adminConfigKey, JSON.stringify(payload));
+  show('LOCAL', { message: 'Configuracoes salvas localmente.', config: payload });
 }
 
 async function connectRealtime() {
@@ -1285,7 +1710,11 @@ $('cancelOldTripsButton').addEventListener('click', async () => {
 });
 $('saveBranchButton').addEventListener('click', saveBranch);
 $('saveAdminButton').addEventListener('click', saveAdmin);
-$('saveFareButton').addEventListener('click', saveFare);
+$('savePassengerButton').addEventListener('click', () => savePassengerAdmin().catch((error) => show('LOCAL', error.message)));
+$('saveDriverButton').addEventListener('click', () => saveDriverAdmin().catch((error) => show('LOCAL', error.message)));
+$('saveVehicleButton').addEventListener('click', () => saveVehicleAdmin().catch((error) => show('LOCAL', error.message)));
+$('saveFareButton').addEventListener('click', () => saveFare().catch((error) => show('LOCAL', error.message)));
+$('saveConfigButton').addEventListener('click', saveLocalConfig);
 
 document.querySelectorAll('[data-list]').forEach((button) => {
   button.addEventListener('click', () => list(button.dataset.list));
@@ -1293,6 +1722,10 @@ document.querySelectorAll('[data-list]').forEach((button) => {
 
 document.querySelectorAll('[data-panel-target]').forEach((button) => {
   button.addEventListener('click', () => showPanel(button.dataset.panelTarget));
+});
+
+document.querySelectorAll('[data-config-tab]').forEach((button) => {
+  button.addEventListener('click', () => showConfigTab(button.dataset.configTab));
 });
 
 document.addEventListener('click', async (event) => {
@@ -1322,6 +1755,7 @@ async function bootstrapAdminPanel() {
   $('baseUrl').value = localApiBaseUrl();
 
   initMap();
+  loadLocalConfig();
   showPanel(activePanel);
 
   if (accessToken) {
