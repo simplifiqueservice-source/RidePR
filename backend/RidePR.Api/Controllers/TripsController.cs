@@ -11,10 +11,14 @@ namespace RidePR.Api.Controllers;
 public class TripsController : ControllerBase
 {
     private readonly TripService _service;
+    private readonly ILogger<TripsController> _logger;
 
-    public TripsController(TripService service)
+    public TripsController(
+        TripService service,
+        ILogger<TripsController> logger)
     {
         _service = service;
+        _logger = logger;
     }
 
     /// <summary>
@@ -50,6 +54,11 @@ public class TripsController : ControllerBase
     public async Task<IActionResult> Create(CreateTripDto dto)
     {
         var trip = await _service.CreateAsync(dto);
+        _logger.LogInformation(
+            "TRIP_CREATED tripId={TripId} passengerId={PassengerId} branchId={BranchId}",
+            trip.Id,
+            trip.PassengerId,
+            trip.BranchId);
         return Ok(trip);
     }
 

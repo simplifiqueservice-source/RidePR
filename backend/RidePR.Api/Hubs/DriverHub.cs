@@ -27,9 +27,16 @@ public class DriverHub : Hub
         _context = context;
     }
 
-    public async Task JoinDriverGroup(Guid driverId)
+    public async Task<object> JoinDriverGroup(Guid driverId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, SignalRDispatchNotifier.GetDriverGroup(driverId));
+        return new
+        {
+            Event = "DRIVER_GROUP_JOINED",
+            DriverId = driverId,
+            Group = SignalRDispatchNotifier.GetDriverGroup(driverId),
+            Context.ConnectionId
+        };
     }
 
     public async Task LeaveDriverGroup(Guid driverId)

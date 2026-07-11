@@ -18,6 +18,10 @@ const rideGreen = Color(0xff16a34a);
 const rideRed = Color(0xffdc2626);
 const rideMuted = Color(0xff98a2b3);
 
+void driverLog(String event, [Object? data]) {
+  debugPrint('[RidePR Driver] $event${data == null ? '' : ' $data'}');
+}
+
 void main() {
   runApp(const RidePrDriverApp());
 }
@@ -245,6 +249,8 @@ class AuthSession {
     this.email = data['email'] as String?;
     role = data['role'] as String?;
 
+    driverLog('LOGIN_OK', {'userId': userId, 'role': role});
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('accessToken', api.accessToken ?? '');
     await prefs.setString('refreshToken', refreshToken ?? '');
@@ -252,6 +258,7 @@ class AuthSession {
     await prefs.setString('name', name ?? '');
     await prefs.setString('email', this.email ?? '');
     await prefs.setString('role', role ?? '');
+    driverLog('TOKEN_SAVED');
   }
 
   Future<void> register(
@@ -273,6 +280,8 @@ class AuthSession {
     this.email = data['email'] as String?;
     role = data['role'] as String?;
 
+    driverLog('LOGIN_OK', {'userId': userId, 'role': role});
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('accessToken', api.accessToken ?? '');
     await prefs.setString('refreshToken', refreshToken ?? '');
@@ -280,6 +289,7 @@ class AuthSession {
     await prefs.setString('name', this.name ?? '');
     await prefs.setString('email', this.email ?? '');
     await prefs.setString('role', role ?? '');
+    driverLog('TOKEN_SAVED');
   }
 
   Future<void> forgotPassword(String email) async {
@@ -508,7 +518,8 @@ class _LoginPageState extends State<LoginPage> {
       await widget.session.forgotPassword(email.text.trim());
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Senha redefinida. Confira o retorno da API.')),
+        const SnackBar(
+            content: Text('Senha redefinida. Confira o retorno da API.')),
       );
     } catch (ex) {
       setState(() => error = ex.toString());
@@ -578,6 +589,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
   bool offerDialogOpen = false;
 
   String? get driverId => driver?['id']?.toString();
+  bool get _driverApproved {
+    final status = driver == null ? '' : _value(driver!, 'approvalStatus');
+    return status == '2' || status.toLowerCase() == 'approved';
+  }
+
   bool get driverReady =>
       driver != null &&
       vehicle != null &&
@@ -893,6 +909,9 @@ class _DriverHomePageState extends State<DriverHomePage> {
             as Map<String, dynamic>;
         _fillDriverForm(driver!);
         selectedStatus = _driverStatusNumber(driver!['status']);
+        driverLog('DRIVER_PROFILE_LOADED');
+        driverLog('DRIVER_ID', driverId);
+        driverLog('DRIVER_APPROVAL_STATUS', _value(driver!, 'approvalStatus'));
         await _loadVehicles();
         await _connectRealtime();
         await _loadTrips();
@@ -962,6 +981,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
     if (vehicle != null) {
       _fillVehicleForm(vehicle!);
+      driverLog('VEHICLE_LOADED', _id(vehicle!));
+      driverLog('VEHICLE_STATUS',
+          {'active': _boolValue(vehicle, 'active', fallback: false)});
+    } else {
+      driverLog('VEHICLE_LOADED', 'none');
     }
   }
 
@@ -969,6 +993,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
     final currentDriverId = driverId;
 
     if (currentDriverId == null || widget.session.api.accessToken == null) {
+      driverLog('ERROR', 'SignalR sem DriverId ou token.');
       return;
     }
 
@@ -977,9 +1002,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
     if (connectedHubUrl == hubUrl &&
         hubConnection?.state == HubConnectionState.Connected) {
+      driverLog('SIGNALR_CONNECTED', 'reusing');
       return;
     }
 
+    driverLog('SIGNALR_CONNECTING', hubUrl);
     await hubConnection?.stop();
 
     final options = HttpConnectionOptions(
@@ -991,15 +1018,33 @@ class _DriverHomePageState extends State<DriverHomePage> {
         .build();
 
     connection.onclose(({error}) {
+      driverLog('SIGNALR_DISCONNECTED', error);
       if (mounted) {
         setState(() => liveStatus = 'SignalR desconectado.');
       }
     });
 
+    connection.onreconnecting(({error}) {
+      driverLog('SIGNALR_RECONNECTING', error);
+      if (mounted) {
+        setState(() => liveStatus = 'SignalR reconectando...');
+      }
+    });
+
+    connection.onreconnected(({connectionId}) {
+      driverLog('SIGNALR_CONNECTED', {'connectionId': connectionId});
+      if (mounted) {
+        setState(() => liveStatus = 'SignalR conectado.');
+      }
+    });
+
     connection.on('DispatchOfferReceived', (args) {
+      driverLog('DISPATCH_EVENT_RECEIVED');
+      driverLog('DISPATCH_PAYLOAD', args);
       final offer = _firstMap(args);
 
       if (offer == null || !mounted) {
+        driverLog('ERROR', 'DispatchOfferReceived sem payload de oferta.');
         return;
       }
 
@@ -1049,7 +1094,9 @@ class _DriverHomePageState extends State<DriverHomePage> {
     });
 
     await connection.start();
-    await connection.invoke('JoinDriverGroup', args: [currentDriverId]);
+    final joinResult =
+        await connection.invoke('JoinDriverGroup', args: [currentDriverId]);
+    driverLog('DRIVER_GROUP_JOINED', joinResult);
 
     if (!mounted) {
       return;
@@ -1060,6 +1107,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
       connectedHubUrl = hubUrl;
       liveStatus = 'SignalR conectado.';
     });
+    driverLog('SIGNALR_CONNECTED');
   }
 
   void _applyTripEvent(String eventName, Map<String, dynamic> trip) {
@@ -1099,6 +1147,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
     }
 
     offerDialogOpen = true;
+    driverLog('OFFER_DIALOG_OPENED', offer['tripId'] ?? offer['TripId']);
     SystemSound.play(SystemSoundType.alert);
     HapticFeedback.mediumImpact();
 
@@ -1142,6 +1191,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
   Future<void> _updateStatus() async {
     if (driverId == null) {
+      driverLog('ERROR', 'DRIVER_ID ausente ao mudar status.');
       return;
     }
 
@@ -1154,6 +1204,31 @@ class _DriverHomePageState extends State<DriverHomePage> {
     }
 
     try {
+      if (selectedStatus == 2) {
+        driverLog('DRIVER_ONLINE_REQUEST', driverId);
+
+        if (!_driverApproved) {
+          throw ApiException('Motorista ainda nao aprovado pelo admin.');
+        }
+
+        if (!_boolValue(vehicle, 'active', fallback: false)) {
+          throw ApiException('Veiculo ausente ou inativo.');
+        }
+
+        final position = await _readCurrentPosition();
+        if (position == null) {
+          selectedStatus = 1;
+          return;
+        }
+
+        driverLog('LOCATION_PERMISSION_STATUS', 'ok');
+        await _connectRealtime();
+
+        if (hubConnection?.state != HubConnectionState.Connected) {
+          throw ApiException('SignalR desconectado.');
+        }
+      }
+
       final data = await widget.session.api.patch(
         '/api/drivers/$driverId/status',
         {'status': selectedStatus},
@@ -1164,12 +1239,14 @@ class _DriverHomePageState extends State<DriverHomePage> {
             'Status atualizado para ${_driverStatusLabel(data['status'])}.';
       });
       if (selectedStatus == 2 && !locationStreaming) {
+        driverLog('DRIVER_ONLINE_CONFIRMED', driverId);
         _startLocationStream();
       }
       if (selectedStatus != 2 && locationStreaming) {
         _stopLocationStream('Envio automatico de localizacao parado.');
       }
     } catch (ex) {
+      driverLog('ERROR', ex);
       setState(() => lastEvent = ex.toString());
     }
   }
@@ -1286,6 +1363,8 @@ class _DriverHomePageState extends State<DriverHomePage> {
     }
 
     try {
+      driverLog(
+          'OFFER_ACCEPT_REQUEST', {'tripId': tripId, 'driverId': driverId});
       final data = await widget.session.api.post(
         '/api/dispatch/$tripId/accept',
         {'driverId': driverId},
@@ -1298,8 +1377,10 @@ class _DriverHomePageState extends State<DriverHomePage> {
             availableTrips.where((trip) => _id(trip) != tripId).toList();
         lastEvent = _pretty('TripAccepted', activeTrip!);
       });
+      driverLog('OFFER_ACCEPTED', {'tripId': tripId});
       _moveMapToVisiblePoint();
     } catch (ex) {
+      driverLog('ERROR', ex);
       setState(() => lastEvent = ex.toString());
     }
   }
@@ -1320,7 +1401,9 @@ class _DriverHomePageState extends State<DriverHomePage> {
             availableTrips.where((trip) => _id(trip) != tripId).toList();
         lastEvent = _pretty('DispatchRejected', data as Map<String, dynamic>);
       });
+      driverLog('OFFER_REJECTED', {'tripId': tripId});
     } catch (ex) {
+      driverLog('ERROR', ex);
       setState(() => lastEvent = ex.toString());
     }
   }
@@ -1443,8 +1526,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
         lastEvent =
             'DriverLocationUpdated\nlat=$lat lng=$lng speed=$currentSpeed heading=$currentHeading';
       });
+      driverLog('HEARTBEAT_SENT', currentDriverId);
+      driverLog('LOCATION_SENT', {'lat': lat, 'lng': lng});
       _moveMapToVisiblePoint();
     } catch (ex) {
+      driverLog('ERROR', ex);
       setState(() {
         locationError = _friendlyLocationError(ex);
         lastEvent = locationError!;

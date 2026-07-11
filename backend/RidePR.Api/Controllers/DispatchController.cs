@@ -11,10 +11,14 @@ namespace RidePR.Api.Controllers;
 public class DispatchController : ControllerBase
 {
     private readonly DispatchService _dispatchService;
+    private readonly ILogger<DispatchController> _logger;
 
-    public DispatchController(DispatchService dispatchService)
+    public DispatchController(
+        DispatchService dispatchService,
+        ILogger<DispatchController> logger)
     {
         _dispatchService = dispatchService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -35,15 +39,39 @@ public class DispatchController : ControllerBase
     /// <summary>
     /// Inicia a fila de despacho para uma corrida e envia oferta ao melhor motorista.
     /// </summary>
-    [Authorize(Roles = "Administrator")]
+    [Authorize(Roles = "Administrator,Passenger")]
     [HttpPost("request")]
     [HttpPost("start")]
     public async Task<IActionResult> Start(DispatchRequestDto dto)
     {
+        _logger.LogInformation("DISPATCH_STARTED tripId={TripId} radiusKm={RadiusKm}", dto.TripId, dto.RadiusKm);
         var result = await _dispatchService.StartDispatchAsync(dto);
 
         if (!result.Success)
+        {
+            _logger.LogWarning(
+                "DISPATCH_FAILED_REASON tripId={TripId} reason={Reason}",
+                dto.TripId,
+                result.Message);
             return BadRequest(result.Message);
+        }
+
+        _logger.LogInformation(
+            "ELIGIBLE_DRIVERS_COUNT tripId={TripId} count={Count}",
+            dto.TripId,
+            result.Data!.Candidates.Count);
+        _logger.LogInformation(
+            "ELIGIBLE_DRIVER_IDS tripId={TripId} drivers={Drivers}",
+            dto.TripId,
+            string.Join(",", result.Data.Candidates.Select(x => x.DriverId)));
+        _logger.LogInformation(
+            "DRIVER_SELECTED tripId={TripId} driverId={DriverId}",
+            dto.TripId,
+            result.Data.CurrentOffer?.DriverId);
+        _logger.LogInformation(
+            "OFFER_CREATED tripId={TripId} driverId={DriverId}",
+            dto.TripId,
+            result.Data.CurrentOffer?.DriverId);
 
         return Ok(result.Data);
     }
