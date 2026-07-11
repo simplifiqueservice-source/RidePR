@@ -11,6 +11,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('RidePR'), findsOneWidget);
-    expect(find.text('Entre para receber corridas'), findsOneWidget);
+    expect(find.text('Dirija com um app simples e profissional'), findsOneWidget);
+    expect(find.text('Entrar'), findsOneWidget);
+    expect(find.text('Criar conta'), findsOneWidget);
   });
 }

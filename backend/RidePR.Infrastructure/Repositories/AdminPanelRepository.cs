@@ -8,6 +8,7 @@ namespace RidePR.Infrastructure.Repositories;
 
 public class AdminPanelRepository : IAdminPanelRepository
 {
+    private static readonly TimeSpan PresenceTtl = TimeSpan.FromSeconds(45);
     private readonly ApplicationDbContext _context;
 
     public AdminPanelRepository(ApplicationDbContext context)
@@ -28,13 +29,15 @@ public class AdminPanelRepository : IAdminPanelRepository
 
     public async Task<AdminDriversOverviewDto> GetDriversOverviewAsync()
     {
+        var heartbeatCutoff = DateTime.UtcNow.Subtract(PresenceTtl);
+
         return new AdminDriversOverviewDto
         {
             TotalDrivers = await _context.Drivers.CountAsync(),
             ActiveDrivers = await _context.Drivers.CountAsync(x => x.Active),
             PendingApproval = await _context.Drivers.CountAsync(x => x.ApprovalStatus == DriverApprovalStatus.Pending),
             ApprovedDrivers = await _context.Drivers.CountAsync(x => x.ApprovalStatus == DriverApprovalStatus.Approved),
-            OnlineDrivers = await _context.Drivers.CountAsync(x => x.Status == DriverStatus.Online),
+            OnlineDrivers = await CountValidOnlineDriversAsync(heartbeatCutoff),
             BusyDrivers = await _context.Drivers.CountAsync(x => x.Status == DriverStatus.Busy)
         };
     }
@@ -87,6 +90,8 @@ public class AdminPanelRepository : IAdminPanelRepository
 
     public async Task<AdminOperationsDto> GetOperationsAsync()
     {
+        var heartbeatCutoff = DateTime.UtcNow.Subtract(PresenceTtl);
+
         return new AdminOperationsDto
         {
             PendingDriverApprovals = await _context.Drivers.CountAsync(x => x.ApprovalStatus == DriverApprovalStatus.Pending),
@@ -98,11 +103,8 @@ public class AdminPanelRepository : IAdminPanelRepository
                 x.Status == PaymentStatus.Pending ||
                 x.Status == PaymentStatus.Authorized),
             PendingRefunds = await _context.PaymentRefunds.CountAsync(x => x.Status == RefundStatus.Pending),
-            OnlineDrivers = await _context.DriverLocations.CountAsync(x => x.Online),
-            AvailableDrivers = await _context.Drivers.CountAsync(x =>
-                x.Active &&
-                x.ApprovalStatus == DriverApprovalStatus.Approved &&
-                x.Status == DriverStatus.Online)
+            OnlineDrivers = await CountValidOnlineDriversAsync(heartbeatCutoff),
+            AvailableDrivers = await CountValidOnlineDriversAsync(heartbeatCutoff)
         };
     }
 
@@ -218,11 +220,18 @@ public class AdminPanelRepository : IAdminPanelRepository
 
     public async Task<IReadOnlyList<AdminLiveDriverDto>> GetLiveDriversAsync(bool onlineOnly, int limit)
     {
+        var heartbeatCutoff = DateTime.UtcNow.Subtract(PresenceTtl);
         var query =
             from driver in _context.Drivers
             join user in _context.Users on driver.UserId equals user.Id
             join location in _context.DriverLocations on driver.Id equals location.DriverId
-            where !onlineOnly || location.Online
+            let presenceOnline =
+                location.Online &&
+                location.UpdatedAt >= heartbeatCutoff &&
+                driver.Active &&
+                driver.Status == DriverStatus.Online &&
+                driver.ApprovalStatus == DriverApprovalStatus.Approved
+            where !onlineOnly || presenceOnline
             orderby location.UpdatedAt descending
             select new
             {
@@ -232,7 +241,7 @@ public class AdminPanelRepository : IAdminPanelRepository
                 driver.Phone,
                 driver.Status,
                 driver.ApprovalStatus,
-                location.Online,
+                Online = presenceOnline,
                 location.Position,
                 location.Speed,
                 location.Heading,
@@ -266,5 +275,18 @@ public class AdminPanelRepository : IAdminPanelRepository
             x.CreatedAt >= from &&
             x.CreatedAt <= to &&
             x.Status == status);
+    }
+
+    private async Task<int> CountValidOnlineDriversAsync(DateTime heartbeatCutoff)
+    {
+        return await (
+            from driver in _context.Drivers
+            join location in _context.DriverLocations on driver.Id equals location.DriverId
+            where location.Online &&
+                  location.UpdatedAt >= heartbeatCutoff &&
+                  driver.Active &&
+                  driver.Status == DriverStatus.Online &&
+                  driver.ApprovalStatus == DriverApprovalStatus.Approved
+            select driver.Id).CountAsync();
     }
 }

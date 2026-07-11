@@ -282,6 +282,12 @@ class AuthSession {
     await prefs.setString('role', role ?? '');
   }
 
+  Future<void> forgotPassword(String email) async {
+    await api.post('/api/auth/forgot-password', {
+      'email': email.trim(),
+    });
+  }
+
   Future<void> logout() async {
     api.accessToken = null;
     refreshToken = null;
@@ -420,12 +426,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ],
                   TextButton(
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                            'Recuperacao de senha ainda nao esta disponivel.'),
-                      ),
-                    ),
+                    onPressed: loading ? null : _forgotPassword,
                     child: const Text('Recuperar senha'),
                   ),
                 ],
@@ -489,6 +490,25 @@ class _LoginPageState extends State<LoginPage> {
         MaterialPageRoute(
           builder: (_) => DriverHomePage(session: widget.session),
         ),
+      );
+    } catch (ex) {
+      setState(() => error = ex.toString());
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+
+    try {
+      await widget.session.forgotPassword(email.text.trim());
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Senha redefinida. Confira o retorno da API.')),
       );
     } catch (ex) {
       setState(() => error = ex.toString());
@@ -1525,6 +1545,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
   Future<void> _logout() async {
     locationTimer?.cancel();
+    await _goOfflineBestEffort();
     await hubConnection?.stop();
     await widget.session.logout();
 
@@ -1540,6 +1561,23 @@ class _DriverHomePageState extends State<DriverHomePage> {
         ),
       ),
     );
+  }
+
+  Future<void> _goOfflineBestEffort() async {
+    final id = driverId;
+
+    if (id == null) {
+      return;
+    }
+
+    try {
+      await widget.session.api.patch(
+        '/api/drivers/$id/status',
+        {'status': 1},
+      );
+    } catch (_) {
+      // A limpeza de presenca no backend remove motoristas sem heartbeat.
+    }
   }
 
   void _openProfile() {

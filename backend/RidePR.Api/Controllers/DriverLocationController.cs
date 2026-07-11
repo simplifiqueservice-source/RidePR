@@ -1,7 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using RidePR.Application.Interfaces;
 using RidePR.Application.Services;
+using RidePR.Domain.Enums;
+using RidePR.Infrastructure.Data;
 
 namespace RidePR.Api.Controllers;
 
@@ -12,13 +16,16 @@ public class DriverLocationController : ControllerBase
 {
     private readonly DriverLocationService _service;
     private readonly IRealtimeNotifier _realtimeNotifier;
+    private readonly ApplicationDbContext _context;
 
     public DriverLocationController(
         DriverLocationService service,
-        IRealtimeNotifier realtimeNotifier)
+        IRealtimeNotifier realtimeNotifier,
+        ApplicationDbContext context)
     {
         _service = service;
         _realtimeNotifier = realtimeNotifier;
+        _context = context;
     }
 
     // ==========================
@@ -32,6 +39,10 @@ public class DriverLocationController : ControllerBase
         double speed,
         double heading)
     {
+        var validation = await ValidateDriverLocationUpdateAsync(driverId, latitude, longitude);
+        if (validation != null)
+            return validation;
+
         await _service.UpdateLocationAsync(
             driverId,
             latitude,
@@ -47,6 +58,40 @@ public class DriverLocationController : ControllerBase
             heading);
 
         return Ok();
+    }
+
+    private async Task<IActionResult?> ValidateDriverLocationUpdateAsync(
+        Guid driverId,
+        double latitude,
+        double longitude)
+    {
+        if (latitude is < -90 or > 90 || longitude is < -180 or > 180)
+            return BadRequest("Coordenadas invalidas.");
+
+        var driver = await _context.Drivers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == driverId);
+
+        if (driver == null)
+            return NotFound("Motorista nao encontrado.");
+
+        if (!User.IsInRole("Administrator"))
+        {
+            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                              User.FindFirstValue("sub");
+
+            if (!Guid.TryParse(userIdClaim, out var userId) || driver.UserId != userId)
+                return Forbid();
+        }
+
+        if (!driver.Active)
+            return BadRequest("Motorista inativo.");
+
+        if (driver.ApprovalStatus != DriverApprovalStatus.Approved)
+            return BadRequest("Motorista ainda nao aprovado.");
+
+        if (driver.Status != DriverStatus.Online)
+            return BadRequest("Motorista precisa estar online para atualizar localizacao.");
+
+        return null;
     }
 
     // ==========================

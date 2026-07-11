@@ -126,6 +126,7 @@ builder.Services.AddScoped<DispatchService>();
 builder.Services.AddScoped<TripService>();
 builder.Services.AddScoped<FareCalculatorService>();
 builder.Services.AddHostedService<DispatchTimeoutWorker>();
+builder.Services.AddHostedService<DriverPresenceWorker>();
 
 builder.Services.AddHttpClient<IMapProvider, OpenStreetMapProvider>((serviceProvider, client) =>
 {

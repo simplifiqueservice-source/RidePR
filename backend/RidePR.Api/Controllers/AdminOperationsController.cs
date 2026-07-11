@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 using RidePR.Domain.Entities;
 using RidePR.Domain.Enums;
 using RidePR.Infrastructure.Data;
@@ -25,6 +26,7 @@ public class AdminOperationsController : ControllerBase
     {
         var today = DateTime.UtcNow.Date;
         var tomorrow = today.AddDays(1);
+        var heartbeatCutoff = DateTime.UtcNow.AddSeconds(-45);
 
         var trips = await _context.Trips
             .AsNoTracking()
@@ -50,7 +52,7 @@ public class AdminOperationsController : ControllerBase
             Drivers = new
             {
                 Total = await _context.Drivers.CountAsync(),
-                Online = await _context.Drivers.CountAsync(x => x.Status == DriverStatus.Online),
+                Online = await CountValidOnlineDriversAsync(heartbeatCutoff),
                 PendingApproval = await _context.Drivers.CountAsync(x => x.ApprovalStatus == DriverApprovalStatus.Pending)
             },
             Passengers = new
@@ -258,7 +260,7 @@ public class AdminOperationsController : ControllerBase
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(string.IsNullOrWhiteSpace(dto.Password) ? "RidePR123!" : dto.Password),
             Role = UserRole.Passenger,
             BranchId = dto.BranchId,
-            Active = dto.Active,
+            Active = true,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -276,7 +278,7 @@ public class AdminOperationsController : ControllerBase
             City = dto.City.Trim(),
             State = dto.State.Trim().ToUpperInvariant(),
             ZipCode = dto.ZipCode.Trim(),
-            Active = dto.Active,
+            Active = true,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -365,14 +367,30 @@ public class AdminOperationsController : ControllerBase
         if (passenger == null)
             return NotFound("Passageiro nao encontrado.");
 
-        if (await _context.Trips.AnyAsync(x => x.PassengerId == id))
-            return Conflict(CannotDeleteWithHistory);
+        if (await PassengerHasHistoryAsync(passenger))
+        {
+            await DeactivatePassengerAsync(passenger);
+            await _context.SaveChangesAsync();
+            return Ok(new
+            {
+                Message = "O passageiro possui historico e foi desativado.",
+                Action = "Deactivated",
+                passenger.Id,
+                passenger.Active
+            });
+        }
 
+        _context.Set<RefreshToken>().RemoveRange(_context.Set<RefreshToken>().Where(x => x.UserId == passenger.UserId));
         _context.Passengers.Remove(passenger);
         _context.Users.Remove(passenger.User);
         await _context.SaveChangesAsync();
 
-        return Ok("Passageiro excluido com sucesso.");
+        return Ok(new
+        {
+            Message = "Passageiro excluido com sucesso.",
+            Action = "Deleted",
+            passenger.Id
+        });
     }
 
     [HttpGet("drivers")]
@@ -454,7 +472,7 @@ public class AdminOperationsController : ControllerBase
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(string.IsNullOrWhiteSpace(dto.Password) ? "RidePR123!" : dto.Password),
             Role = UserRole.Driver,
             BranchId = dto.BranchId,
-            Active = dto.Active,
+            Active = true,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -476,9 +494,9 @@ public class AdminOperationsController : ControllerBase
             CnhNumber = dto.CnhNumber.Trim(),
             CnhCategory = dto.CnhCategory.Trim(),
             CnhExpiration = UtcDate(dto.CnhExpiration),
-            Status = dto.Active ? DriverStatus.Online : DriverStatus.Offline,
-            ApprovalStatus = dto.Approved ? DriverApprovalStatus.Approved : DriverApprovalStatus.Pending,
-            Active = dto.Active,
+            Status = DriverStatus.Offline,
+            ApprovalStatus = DriverApprovalStatus.Pending,
+            Active = true,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -515,7 +533,6 @@ public class AdminOperationsController : ControllerBase
         driver.CnhCategory = dto.CnhCategory.Trim();
         driver.CnhExpiration = UtcDate(dto.CnhExpiration);
         driver.Active = dto.Active;
-        driver.ApprovalStatus = dto.Approved ? DriverApprovalStatus.Approved : driver.ApprovalStatus;
         driver.Status = dto.Active ? driver.Status : DriverStatus.Offline;
         driver.UpdatedAt = DateTime.UtcNow;
 
@@ -575,15 +592,31 @@ public class AdminOperationsController : ControllerBase
         if (driver == null)
             return NotFound("Motorista nao encontrado.");
 
-        if (await _context.Trips.AnyAsync(x => x.DriverId == id))
-            return Conflict(CannotDeleteWithHistory);
+        if (await DriverHasHistoryAsync(driver))
+        {
+            await DeactivateDriverAsync(driver);
+            await _context.SaveChangesAsync();
+            return Ok(new
+            {
+                Message = "O motorista possui historico e foi desativado.",
+                Action = "Deactivated",
+                driver.Id,
+                driver.Active
+            });
+        }
 
+        _context.Set<RefreshToken>().RemoveRange(_context.Set<RefreshToken>().Where(x => x.UserId == driver.UserId));
         _context.Vehicles.RemoveRange(driver.Vehicles);
         _context.Drivers.Remove(driver);
         _context.Users.Remove(driver.User);
         await _context.SaveChangesAsync();
 
-        return Ok("Motorista excluido com sucesso.");
+        return Ok(new
+        {
+            Message = "Motorista excluido com sucesso.",
+            Action = "Deleted",
+            driver.Id
+        });
     }
 
     [HttpGet("vehicles")]
@@ -809,6 +842,105 @@ public class AdminOperationsController : ControllerBase
         driver.UpdatedAt = DateTime.UtcNow;
     }
 
+    private async Task<bool> PassengerHasHistoryAsync(Passenger passenger)
+    {
+        return await _context.Trips.AnyAsync(x => x.PassengerId == passenger.Id) ||
+               await TableHasAnyAsync("PassengerHistory", () => _context.PassengerHistory.AnyAsync(x => x.PassengerId == passenger.Id)) ||
+               await TableHasAnyAsync("Wallets", () => _context.Wallets.AnyAsync(x => x.UserId == passenger.UserId)) ||
+               await TableHasAnyAsync("Payments", () => _context.Payments.AnyAsync(x => x.PassengerId == passenger.Id));
+    }
+
+    private async Task<int> CountValidOnlineDriversAsync(DateTime heartbeatCutoff)
+    {
+        return await (
+            from driver in _context.Drivers
+            join location in _context.DriverLocations on driver.Id equals location.DriverId
+            where location.Online &&
+                  location.UpdatedAt >= heartbeatCutoff &&
+                  driver.Active &&
+                  driver.Status == DriverStatus.Online &&
+                  driver.ApprovalStatus == DriverApprovalStatus.Approved
+            select driver.Id).CountAsync();
+    }
+
+    private async Task<bool> DriverHasHistoryAsync(Driver driver)
+    {
+        return driver.Vehicles.Any() ||
+               await _context.Trips.AnyAsync(x => x.DriverId == driver.Id) ||
+               await TableHasAnyAsync("DriverLocations", () => _context.DriverLocations.AnyAsync(x => x.DriverId == driver.Id)) ||
+               await TableHasAnyAsync("Wallets", () => _context.Wallets.AnyAsync(x => x.UserId == driver.UserId)) ||
+               await TableHasAnyAsync("Payments", () => _context.Payments.AnyAsync(x => x.DriverId == driver.Id));
+    }
+
+    private async Task DeactivatePassengerAsync(Passenger passenger)
+    {
+        passenger.Active = false;
+        passenger.UpdatedAt = DateTime.UtcNow;
+        passenger.User.Active = false;
+
+        if (await TableExistsAsync("Wallets"))
+        {
+            var wallets = await _context.Wallets.Where(x => x.UserId == passenger.UserId).ToListAsync();
+            foreach (var wallet in wallets)
+            {
+                wallet.Active = false;
+                wallet.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+    }
+
+    private async Task DeactivateDriverAsync(Driver driver)
+    {
+        driver.Active = false;
+        driver.Status = DriverStatus.Offline;
+        driver.UpdatedAt = DateTime.UtcNow;
+        driver.User.Active = false;
+
+        foreach (var vehicle in driver.Vehicles)
+        {
+            vehicle.Active = false;
+            vehicle.UpdatedAt = DateTime.UtcNow;
+        }
+
+        if (await TableExistsAsync("DriverLocations"))
+        {
+            var location = await _context.DriverLocations.FirstOrDefaultAsync(x => x.DriverId == driver.Id);
+            if (location != null)
+            {
+                location.Online = false;
+                location.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        if (await TableExistsAsync("Wallets"))
+        {
+            var wallets = await _context.Wallets.Where(x => x.UserId == driver.UserId).ToListAsync();
+            foreach (var wallet in wallets)
+            {
+                wallet.Active = false;
+                wallet.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+    }
+
+    private async Task<bool> TableHasAnyAsync(string tableName, Func<Task<bool>> query)
+    {
+        return await TableExistsAsync(tableName) && await query();
+    }
+
+    private async Task<bool> TableExistsAsync(string tableName)
+    {
+        var connection = _context.Database.GetDbConnection();
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"select to_regclass('\"{tableName}\"')::text";
+        var result = await command.ExecuteScalarAsync();
+        return result != null && result != DBNull.Value;
+    }
+
     private static string ShortCode(Guid id)
     {
         return id.ToString("N")[..8].ToUpperInvariant();
@@ -894,7 +1026,7 @@ public class AdminOperationsController : ControllerBase
         public string CnhNumber { get; set; } = "";
         public string CnhCategory { get; set; } = "";
         public DateTime CnhExpiration { get; set; } = DateTime.UtcNow.AddYears(1);
-        public bool Approved { get; set; } = true;
+        public bool Approved { get; set; }
     }
 
     public class AdminVehicleDto

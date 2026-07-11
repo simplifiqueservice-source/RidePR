@@ -11,11 +11,16 @@ public class DriverService
 {
     private readonly IDriverRepository _driverRepository;
     private readonly IUserRepository _userRepository;
+    private readonly IDriverLocationRepository _locationRepository;
 
-    public DriverService(IDriverRepository driverRepository, IUserRepository userRepository)
+    public DriverService(
+        IDriverRepository driverRepository,
+        IUserRepository userRepository,
+        IDriverLocationRepository locationRepository)
     {
         _driverRepository = driverRepository;
         _userRepository = userRepository;
+        _locationRepository = locationRepository;
     }
 
     public async Task<PagedResult<DriverResponseDto>> GetPagedAsync(DriverQueryDto query)
@@ -178,6 +183,19 @@ public class DriverService
 
         await _driverRepository.UpdateAsync(driver);
         await _driverRepository.SaveChangesAsync();
+
+        if (dto.Status != DriverStatus.Online)
+        {
+            var location = await _locationRepository.GetByDriverIdAsync(driver.Id);
+
+            if (location != null)
+            {
+                location.Online = false;
+                location.UpdatedAt = DateTime.UtcNow;
+                await _locationRepository.UpdateAsync(location);
+                await _locationRepository.SaveChangesAsync();
+            }
+        }
 
         return Result<DriverResponseDto>.Ok(ToResponse(driver));
     }
