@@ -26,11 +26,11 @@ class AppConfig {
 }
 
 void main() {
-  runApp(const RidePrMvpTestApp());
+  runApp(const RidePrPassengerApp());
 }
 
-class RidePrMvpTestApp extends StatelessWidget {
-  const RidePrMvpTestApp({super.key});
+class RidePrPassengerApp extends StatelessWidget {
+  const RidePrPassengerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +73,7 @@ class RidePrMvpTestApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const MvpTestHome(),
+      home: const PassengerHome(),
     );
   }
 }
@@ -210,14 +210,14 @@ class LocalValidationException implements Exception {
   String toString() => message;
 }
 
-class MvpTestHome extends StatefulWidget {
-  const MvpTestHome({super.key});
+class PassengerHome extends StatefulWidget {
+  const PassengerHome({super.key});
 
   @override
-  State<MvpTestHome> createState() => _MvpTestHomeState();
+  State<PassengerHome> createState() => _PassengerHomeState();
 }
 
-class _MvpTestHomeState extends State<MvpTestHome> {
+class _PassengerHomeState extends State<PassengerHome> {
   final baseUrlController = TextEditingController(text: AppConfig.apiBaseUrl);
   final nameController = TextEditingController();
   final emailController = TextEditingController();
@@ -340,6 +340,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
         debugVisible: debugVisible,
         onLogin: _login,
         onRegister: _register,
+        onForgotPassword: _forgotPassword,
         onToggleDebug: () => setState(() => debugVisible = !debugVisible),
       );
     }
@@ -521,6 +522,7 @@ class _MvpTestHomeState extends State<MvpTestHome> {
               onLogin: _login,
               onSavePassenger: _savePassenger,
               onCreateTrip: _createTrip,
+              onCancelTrip: hasTripId ? _cancelTrip : null,
               onRefresh: hasTripId ? _getTrip : null,
             ),
           ),
@@ -617,6 +619,17 @@ class _MvpTestHomeState extends State<MvpTestHome> {
         await _connectRealtime();
         await _useCurrentLocation();
       }
+
+      return result;
+    });
+  }
+
+  Future<void> _forgotPassword() async {
+    await _run(() async {
+      api.baseUrl = baseUrlController.text;
+      final result = await api.post('/api/auth/forgot-password', {
+        'email': emailController.text.trim(),
+      });
 
       return result;
     });
@@ -771,6 +784,39 @@ class _MvpTestHomeState extends State<MvpTestHome> {
       lastCenteredPoint = point;
     });
     mapController.move(point, 15);
+    await _loadNearbyOnlineDriver(point);
+  }
+
+  Future<void> _loadNearbyOnlineDriver(LatLng point) async {
+    try {
+      final result = await api.get(
+        '/api/driver-location/nearby?latitude=${point.latitude}&longitude=${point.longitude}&radiusKm=${_doubleValue(radiusController)}',
+      );
+
+      if (!result.success || result.body is! List) {
+        return;
+      }
+
+      final drivers = result.body as List;
+      if (drivers.isEmpty || drivers.first is! Map) {
+        return;
+      }
+
+      final driver = Map<String, dynamic>.from(drivers.first as Map);
+      final lat = _numField(driver, 'latitude');
+      final lng = _numField(driver, 'longitude');
+
+      if (lat == 0 || lng == 0) {
+        return;
+      }
+
+      setState(() {
+        driverPoint = LatLng(lat, lng);
+        lastResponse = 'Motorista online proximo encontrado.';
+      });
+    } catch (_) {
+      // Indicacao visual de motorista proximo nao deve bloquear solicitacao.
+    }
   }
 
   Future<Position?> _readCurrentPosition() async {
@@ -873,6 +919,23 @@ class _MvpTestHomeState extends State<MvpTestHome> {
 
       if (result.success && result.body is Map<String, dynamic>) {
         _applyTrip(result.body as Map<String, dynamic>, eventName: 'Status');
+      }
+
+      return result;
+    });
+  }
+
+  Future<void> _cancelTrip() async {
+    await _run(() async {
+      _requireLoggedIn();
+      _requireTripId();
+      final result = await api.post(
+        '/api/trips/${tripIdController.text.trim()}/cancel',
+        {},
+      );
+
+      if (result.success) {
+        setState(() => tripStatus = 'Corrida cancelada');
       }
 
       return result;
@@ -1238,6 +1301,7 @@ class _PassengerAuthPage extends StatefulWidget {
     required this.debugVisible,
     required this.onLogin,
     required this.onRegister,
+    required this.onForgotPassword,
     required this.onToggleDebug,
   });
 
@@ -1250,6 +1314,7 @@ class _PassengerAuthPage extends StatefulWidget {
   final bool debugVisible;
   final VoidCallback onLogin;
   final VoidCallback onRegister;
+  final VoidCallback onForgotPassword;
   final VoidCallback onToggleDebug;
 
   @override
@@ -1269,6 +1334,7 @@ class _PassengerAuthPageState extends State<_PassengerAuthPage> {
   bool get debugVisible => widget.debugVisible;
   VoidCallback get onLogin => widget.onLogin;
   VoidCallback get onRegister => widget.onRegister;
+  VoidCallback get onForgotPassword => widget.onForgotPassword;
   VoidCallback get onToggleDebug => widget.onToggleDebug;
 
   @override
@@ -1364,12 +1430,7 @@ class _PassengerAuthPageState extends State<_PassengerAuthPage> {
                     ),
                   ],
                   TextButton(
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                            'Recuperacao de senha ainda nao esta disponivel.'),
-                      ),
-                    ),
+                    onPressed: loading ? null : onForgotPassword,
                     child: const Text('Recuperar senha'),
                   ),
                 ],
@@ -1646,8 +1707,8 @@ class _CreateTripScreen extends StatelessWidget {
 }
 
 // ignore: unused_element
-class _TestButtonsScreen extends StatelessWidget {
-  const _TestButtonsScreen({
+class _TripOperationsScreen extends StatelessWidget {
+  const _TripOperationsScreen({
     required this.tripIdController,
     required this.driverIdController,
     required this.radiusController,
@@ -1678,7 +1739,7 @@ class _TestButtonsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _ScreenFrame(
-      title: 'Botoes de teste',
+      title: 'Operacoes da corrida',
       children: [
         _Input(controller: tripIdController, label: 'TripId'),
         _Input(controller: driverIdController, label: 'DriverId manual'),
@@ -1732,6 +1793,7 @@ class _PassengerRideCard extends StatelessWidget {
     required this.onLogin,
     required this.onSavePassenger,
     required this.onCreateTrip,
+    required this.onCancelTrip,
     required this.onRefresh,
   });
 
@@ -1749,6 +1811,7 @@ class _PassengerRideCard extends StatelessWidget {
   final VoidCallback onLogin;
   final VoidCallback onSavePassenger;
   final VoidCallback onCreateTrip;
+  final VoidCallback? onCancelTrip;
   final VoidCallback? onRefresh;
 
   @override
@@ -1870,6 +1933,14 @@ class _PassengerRideCard extends StatelessWidget {
               ),
               child: Text(loading ? 'Aguarde...' : _buttonText),
             ),
+            if (onCancelTrip != null) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: loading ? null : onCancelTrip,
+                icon: const Icon(Icons.close),
+                label: const Text('Cancelar corrida'),
+              ),
+            ],
           ],
         ),
       ),

@@ -10,7 +10,7 @@ using RidePR.Infrastructure.Data;
 namespace RidePR.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = "Administrator,Driver")]
+[Authorize]
 [Route("api/driver-location")]
 public class DriverLocationController : ControllerBase
 {
@@ -31,6 +31,7 @@ public class DriverLocationController : ControllerBase
     // ==========================
     // Atualizar localização
     // ==========================
+    [Authorize(Roles = "Administrator,Driver")]
     [HttpPost]
     public async Task<IActionResult> Update(
         Guid driverId,
@@ -97,6 +98,7 @@ public class DriverLocationController : ControllerBase
     // ==========================
     // Buscar localização
     // ==========================
+    [Authorize(Roles = "Administrator,Driver")]
     [HttpGet("{driverId}")]
     public async Task<IActionResult> Get(Guid driverId)
     {
@@ -111,6 +113,7 @@ public class DriverLocationController : ControllerBase
     // ==========================
     // Buscar motoristas próximos
     // ==========================
+    [Authorize(Roles = "Administrator,Driver,Passenger")]
     [HttpGet("nearby")]
     public async Task<IActionResult> Nearby(
         double latitude,
@@ -122,6 +125,15 @@ public class DriverLocationController : ControllerBase
             longitude,
             radiusKm);
 
-        return Ok(drivers);
+        return Ok(drivers.Select(x => new
+        {
+            x.DriverId,
+            Latitude = x.Position.Y,
+            Longitude = x.Position.X,
+            x.Speed,
+            x.Heading,
+            x.Online,
+            x.UpdatedAt
+        }));
     }
 }

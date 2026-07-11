@@ -15,6 +15,7 @@ public class DispatchService
     private readonly IDispatchNotifier _notifier;
     private readonly IRealtimeNotifier _realtimeNotifier;
     private readonly RouteService _routeService;
+    private readonly IVehicleRepository _vehicleRepository;
 
     public DispatchService(
         DriverLocationService locationService,
@@ -23,7 +24,8 @@ public class DispatchService
         IDispatchQueue queue,
         IDispatchNotifier notifier,
         IRealtimeNotifier realtimeNotifier,
-        RouteService routeService)
+        RouteService routeService,
+        IVehicleRepository vehicleRepository)
     {
         _locationService = locationService;
         _driverRepository = driverRepository;
@@ -32,6 +34,7 @@ public class DispatchService
         _notifier = notifier;
         _realtimeNotifier = realtimeNotifier;
         _routeService = routeService;
+        _vehicleRepository = vehicleRepository;
     }
 
     public async Task<List<DriverLocation>> FindNearbyDriversAsync(
@@ -272,6 +275,8 @@ public class DispatchService
                 !driver.Active ||
                 driver.Status != DriverStatus.Online ||
                 driver.ApprovalStatus != DriverApprovalStatus.Approved ||
+                !await HasActiveVehicleAsync(driver.Id) ||
+                await HasActiveTripAsync(driver.Id) ||
                 (trip.BranchId.HasValue &&
                  driver.BranchId.HasValue &&
                  driver.BranchId.Value != trip.BranchId.Value))
@@ -333,7 +338,9 @@ public class DispatchService
             if (driver == null ||
                 !driver.Active ||
                 driver.Status != DriverStatus.Online ||
-                driver.ApprovalStatus != DriverApprovalStatus.Approved)
+                driver.ApprovalStatus != DriverApprovalStatus.Approved ||
+                !await HasActiveVehicleAsync(driver.Id) ||
+                await HasActiveTripAsync(driver.Id))
                 continue;
 
             var distanceKm = CalculateDistanceKm(
@@ -413,5 +420,19 @@ public class DispatchService
     private static double ToRadians(double degrees)
     {
         return degrees * Math.PI / 180;
+    }
+
+    private async Task<bool> HasActiveVehicleAsync(Guid driverId)
+    {
+        var vehicles = await _vehicleRepository.GetPagedAsync(null, driverId, true, 1, 1);
+        return vehicles.Count > 0;
+    }
+
+    private async Task<bool> HasActiveTripAsync(Guid driverId)
+    {
+        var trips = await _tripRepository.GetAllAsync();
+        return trips.Any(x =>
+            x.DriverId == driverId &&
+            x.Status is TripStatus.Accepted or TripStatus.InProgress);
     }
 }

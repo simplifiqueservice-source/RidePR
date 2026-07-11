@@ -12,15 +12,18 @@ public class DriverService
     private readonly IDriverRepository _driverRepository;
     private readonly IUserRepository _userRepository;
     private readonly IDriverLocationRepository _locationRepository;
+    private readonly IVehicleRepository _vehicleRepository;
 
     public DriverService(
         IDriverRepository driverRepository,
         IUserRepository userRepository,
-        IDriverLocationRepository locationRepository)
+        IDriverLocationRepository locationRepository,
+        IVehicleRepository vehicleRepository)
     {
         _driverRepository = driverRepository;
         _userRepository = userRepository;
         _locationRepository = locationRepository;
+        _vehicleRepository = vehicleRepository;
     }
 
     public async Task<PagedResult<DriverResponseDto>> GetPagedAsync(DriverQueryDto query)
@@ -177,6 +180,14 @@ public class DriverService
 
         if (driver.ApprovalStatus != DriverApprovalStatus.Approved)
             return Result<DriverResponseDto>.Fail("Motorista ainda nao aprovado.");
+
+        if (dto.Status == DriverStatus.Online)
+        {
+            var activeVehicles = await _vehicleRepository.GetPagedAsync(null, driver.Id, true, 1, 1);
+
+            if (activeVehicles.Count == 0)
+                return Result<DriverResponseDto>.Fail("Motorista precisa ter veiculo ativo para ficar online.");
+        }
 
         driver.Status = dto.Status;
         driver.UpdatedAt = DateTime.UtcNow;

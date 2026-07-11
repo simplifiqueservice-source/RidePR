@@ -16,6 +16,14 @@ public class AdminLiveDriverDto
 
     public bool Online { get; set; }
 
+    public Guid? BranchId { get; set; }
+
+    public string BranchName { get; set; } = string.Empty;
+
+    public string Vehicle { get; set; } = string.Empty;
+
+    public string Plate { get; set; } = string.Empty;
+
     public double Latitude { get; set; }
 
     public double Longitude { get; set; }

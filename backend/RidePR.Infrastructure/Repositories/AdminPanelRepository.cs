@@ -225,12 +225,19 @@ public class AdminPanelRepository : IAdminPanelRepository
             from driver in _context.Drivers
             join user in _context.Users on driver.UserId equals user.Id
             join location in _context.DriverLocations on driver.Id equals location.DriverId
+            join branch in _context.Branches on driver.BranchId equals branch.Id into branchJoin
+            from branch in branchJoin.DefaultIfEmpty()
+            let vehicle = _context.Vehicles
+                .Where(v => v.DriverId == driver.Id && v.Active)
+                .OrderBy(v => v.CreatedAt)
+                .FirstOrDefault()
             let presenceOnline =
                 location.Online &&
                 location.UpdatedAt >= heartbeatCutoff &&
                 driver.Active &&
                 driver.Status == DriverStatus.Online &&
-                driver.ApprovalStatus == DriverApprovalStatus.Approved
+                driver.ApprovalStatus == DriverApprovalStatus.Approved &&
+                vehicle != null
             where !onlineOnly || presenceOnline
             orderby location.UpdatedAt descending
             select new
@@ -241,6 +248,10 @@ public class AdminPanelRepository : IAdminPanelRepository
                 driver.Phone,
                 driver.Status,
                 driver.ApprovalStatus,
+                driver.BranchId,
+                BranchName = branch == null ? "" : branch.Name,
+                Vehicle = vehicle == null ? "" : vehicle.Brand + " " + vehicle.Model,
+                Plate = vehicle == null ? "" : vehicle.Plate,
                 Online = presenceOnline,
                 location.Position,
                 location.Speed,
@@ -260,6 +271,10 @@ public class AdminPanelRepository : IAdminPanelRepository
                 Status = x.Status.ToString(),
                 ApprovalStatus = x.ApprovalStatus.ToString(),
                 Online = x.Online,
+                BranchId = x.BranchId,
+                BranchName = x.BranchName,
+                Vehicle = x.Vehicle,
+                Plate = x.Plate,
                 Latitude = x.Position.Y,
                 Longitude = x.Position.X,
                 Speed = x.Speed,
@@ -286,7 +301,8 @@ public class AdminPanelRepository : IAdminPanelRepository
                   location.UpdatedAt >= heartbeatCutoff &&
                   driver.Active &&
                   driver.Status == DriverStatus.Online &&
-                  driver.ApprovalStatus == DriverApprovalStatus.Approved
+                  driver.ApprovalStatus == DriverApprovalStatus.Approved &&
+                  _context.Vehicles.Any(v => v.DriverId == driver.Id && v.Active)
             select driver.Id).CountAsync();
     }
 }

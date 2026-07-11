@@ -1491,6 +1491,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
         '${lat.toStringAsFixed(5)}:${lng.toStringAsFixed(5)}:${currentSpeed.toStringAsFixed(1)}:${currentHeading.toStringAsFixed(0)}';
 
     if (signature == lastLocationSignature || movedMeters < 8) {
+      await _sendHeartbeat();
       return;
     }
 
@@ -1502,14 +1503,13 @@ class _DriverHomePageState extends State<DriverHomePage> {
         );
       } else {
         await widget.session.api.post(
-          '/api/driver-location',
-          {},
+          '/api/drivers/me/location',
           {
-            'driverId': currentDriverId,
             'latitude': lat,
             'longitude': lng,
             'speed': currentSpeed,
             'heading': currentHeading,
+            'recordedAt': DateTime.now().toUtc().toIso8601String(),
           },
         );
       }
@@ -1535,6 +1535,21 @@ class _DriverHomePageState extends State<DriverHomePage> {
         locationError = _friendlyLocationError(ex);
         lastEvent = locationError!;
       });
+    }
+  }
+
+  Future<void> _sendHeartbeat() async {
+    try {
+      await widget.session.api.post('/api/drivers/me/heartbeat', {});
+      driverLog('HEARTBEAT_SENT', driverId);
+    } catch (ex) {
+      driverLog('ERROR', ex);
+      if (mounted) {
+        setState(() {
+          locationError = _friendlyLocationError(ex);
+          lastEvent = locationError!;
+        });
+      }
     }
   }
 
